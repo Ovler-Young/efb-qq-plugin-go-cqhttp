@@ -115,7 +115,7 @@ class GoCQHttp(BaseClient):
         self.msg_decorator = QQMsgProcessor(instance=self)
 
         self.loop = asyncio.get_event_loop()
-        self.shutdown_event = asyncio.Event()
+        self.shutdown_event = threading.Event()
 
         asyncio.set_event_loop(self.loop)
 
@@ -668,6 +668,8 @@ class GoCQHttp(BaseClient):
             This thread will never return and should be shutdown by
             `stop_polling` method.
             """
+            loop = asyncio.new_event_loop()  # 在新线程中创建新的事件循环
+            asyncio.set_event_loop(loop)
 
             config = HyperConfig()
             config.access_log_format = "%(h)s %(r)s %(s)s %(b)s %(D)s"
@@ -682,10 +684,7 @@ class GoCQHttp(BaseClient):
 
             # Gracefully shutdown the Quard app `coolq_bot.server_app`
             # See https://hypercorn.readthedocs.io/en/latest/how_to_guides/api_usage.html#graceful-shutdown
-            self.loop.create_task(serve(self.coolq_bot.server_app, config, shutdown_trigger=self.shutdown_event.wait))
-            self.loop.create_task(self.check_status_periodically())
-            self.loop.create_task(self.update_contacts_periodically())
-            self.loop.run_forever()
+            loop.run_until_complete(serve(self.coolq_bot.server_app, config, shutdown_trigger=self.shutdown_event.wait))
 
         self.t = threading.Thread(target=_run)
         self.t.daemon = True
@@ -1423,7 +1422,5 @@ class GoCQHttp(BaseClient):
         thread.
         """
 
-        self.logger.debug("Gracefully stopping QQ Slave")
-        self.shutdown_event.set()
-        self.loop.stop()
-        self.t.join()
+        self.shutdown_event.set()  # 设置 shutdown_event，使事件循环终止
+        self.t.join()  # 等待线程完成
