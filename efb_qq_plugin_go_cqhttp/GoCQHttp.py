@@ -320,9 +320,12 @@ class GoCQHttp(BaseClient):
                 if context["message_type"] == "guild":
                     return
                 try:
-                    user = await self.get_user_info(qq_uid)
-                except Exception as e:
-                    self.logger.error("Failed to get user info of %s", qq_uid)
+                    if context["message_type"] == "group":
+                        user = await self.get_user_info(qq_uid, group_id=context["group_id"])
+                    else:
+                        user = await self.get_user_info(qq_uid)
+                except Exception:
+                    self.logger.warning("Failed to get user info of %s", qq_uid)
                     user = {
                         "nickname": "1094950020",
                         "remark": "1094950020",
