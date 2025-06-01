@@ -998,22 +998,9 @@ class GoCQHttp(BaseClient):
         user_id = int(user_id)
         if no_cache or (not self.friend_list) or (user_id not in self.friend_dict):
             await self.update_friend_list()
-        friend = self.friend_dict.get(user_id)
-        if friend:
-            user = copy.deepcopy(friend)
-            user["is_friend"] = True
-        else:
-            if no_cache:
-                stranger = await self.coolq_api_query("get_stranger_info", user_id=user_id)
-                self.stranger_dict[user_id] = stranger
-            stranger = self.stranger_dict.get(user_id)
-            if stranger is None:
-                stranger = await self.coolq_api_query("get_stranger_info", user_id=user_id)
-                self.stranger_dict[user_id] = stranger
-            user = copy.deepcopy(stranger)
-            user["is_friend"] = False
+        user = None
+        member = None
         if group_id is not None:
-            user["is_in_group"] = False
             member = next(
                 filter(lambda member: member["user_id"] == user_id, await self.get_group_member_list(group_id)), None
             )
@@ -1025,9 +1012,33 @@ class GoCQHttp(BaseClient):
                     ),
                     None,
                 )
-            if member is not None:
-                user["is_in_group"] = True
-                user["in_group_info"] = member
+
+        friend = self.friend_dict.get(user_id)
+        if friend:
+            user = copy.deepcopy(friend)
+            user["is_friend"] = True
+        else:
+            if no_cache:
+                stranger = await self.coolq_api_query("get_stranger_info", user_id=user_id)
+                self.stranger_dict[user_id] = stranger
+            stranger = self.stranger_dict.get(user_id)
+            if stranger is None:
+                if member is not None:
+                    stranger = {
+                        "user_id": member["user_id"],
+                        "nickname": member["nickname"],
+                        "remark": member["card"] if member["card"] else member["nickname"],
+                        "is_in_group": True,
+                        "in_group_info": member
+                    }
+                    self.stranger_dict[user_id] = stranger
+                else:
+                    stranger = await self.coolq_api_query("get_stranger_info", user_id=user_id)
+                    stranger["is_in_group"] = False
+                    self.stranger_dict[user_id] = stranger
+            user = copy.deepcopy(stranger)
+            user["is_friend"] = False
+
         remark = user.get("remark")
         if not remark:
             user["remark"] = user["nickname"]
