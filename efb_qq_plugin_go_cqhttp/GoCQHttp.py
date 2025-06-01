@@ -1028,16 +1028,19 @@ class GoCQHttp(BaseClient):
                         "user_id": member["user_id"],
                         "nickname": member["nickname"],
                         "remark": member["card"] if member["card"] else member["nickname"],
-                        "is_in_group": True,
-                        "in_group_info": member
                     }
                     self.stranger_dict[user_id] = stranger
                 else:
                     stranger = await self.coolq_api_query("get_stranger_info", user_id=user_id)
-                    stranger["is_in_group"] = False
                     self.stranger_dict[user_id] = stranger
             user = copy.deepcopy(stranger)
             user["is_friend"] = False
+
+        if member is not None:
+            user["is_in_group"] = True
+            user["in_group_info"] = member
+        else:
+            user["is_in_group"] = False
 
         remark = user.get("remark")
         if not remark:
