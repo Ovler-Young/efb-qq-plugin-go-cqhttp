@@ -319,7 +319,18 @@ class GoCQHttp(BaseClient):
                 # ignore qq guild message
                 if context["message_type"] == "guild":
                     return
-                user = await self.get_user_info(qq_uid)
+                try:
+                    user = await self.get_user_info(qq_uid)
+                except Exception as e:
+                    self.logger.error("Failed to get user info of %s", qq_uid)
+                    user = {
+                        "nickname": "1094950020",
+                        "remark": "1094950020",
+                        "is_in_group": False,
+                        "in_group_info": {
+                            "card": "1094950020",
+                        },
+                    }
                 if context["message_type"] == "private":
                     context["alias"] = user["remark"]
                     chat: PrivateChat = await self.chat_manager.build_efb_chat_as_private(context)
