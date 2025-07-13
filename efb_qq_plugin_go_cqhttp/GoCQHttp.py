@@ -1,7 +1,6 @@
 import asyncio
 import copy
 import logging
-import random
 import tempfile
 import threading
 import time
@@ -376,13 +375,11 @@ class GoCQHttp(BaseClient):
                     efb_msg.deliver_to = coordinator.master
                     async_send_messages_to_master(efb_msg)
 
-                # Randomly mark message as read with 10% probability
-                if random.random() < 0.1:
-                    try:
-                        await self.coolq_api_query("mark_msg_as_read", message_id=coolq_msg_id)
-                        self.logger.debug(f"Marked message {coolq_msg_id} as read (random)")
-                    except Exception as e:
-                        self.logger.warning(f"Failed to mark message {coolq_msg_id} as read: {e}")
+                try:
+                    await self.coolq_api_query("mark_msg_as_read", message_id=coolq_msg_id)
+                    self.logger.debug(f"Marked message {coolq_msg_id} as read (random)")
+                except Exception as e:
+                    self.logger.warning(f"Failed to mark message {coolq_msg_id} as read: {e}")
 
             asyncio.create_task(_handle_msg())
 
