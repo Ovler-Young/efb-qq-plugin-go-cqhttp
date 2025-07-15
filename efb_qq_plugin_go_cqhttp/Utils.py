@@ -652,6 +652,9 @@ async def async_get_file(url: str) -> IO:
             temp_file.seek(0)
     except Exception as e:
         temp_file.close()
+        logger.warning("File download failed.")
+        logger.warning(str(e))
+        logger.warning(f"url: {url}")
         raise e
     return temp_file
 
