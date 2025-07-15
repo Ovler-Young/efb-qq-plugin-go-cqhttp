@@ -1,4 +1,5 @@
 import logging
+import time
 import tempfile
 from typing import IO, Optional, Union
 
@@ -642,7 +643,7 @@ qq_sface_list = {
 
 
 async def async_get_file(url: str) -> IO:
-    max_retries = 3
+    max_retries = 5
     last_exception = None
     for attempt in range(1, max_retries + 1):
         temp_file = tempfile.NamedTemporaryFile()
@@ -662,6 +663,7 @@ async def async_get_file(url: str) -> IO:
                 logger.warning(str(e))
                 logger.warning(f"url: {url}")
                 raise e
+            time.sleep(attempt)
     raise last_exception
 
 
