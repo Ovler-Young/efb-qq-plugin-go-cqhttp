@@ -332,9 +332,11 @@ class GoCQHttp(BaseClient):
                     return
                 
                 # Check if this is a self-sent message
-                is_self_sent = hasattr(context, '_is_self_sent') and context._is_self_sent
+                is_self_sent = getattr(context, '_is_self_sent', False)
                 if is_self_sent and context["message_type"] == "private":
                     qq_uid = context["target_id"]
+                    context["user_id"] = qq_uid
+                    context.pop("sender")
 
                 user = await self.get_user_info(qq_uid)
                 if context["message_type"] == "private":
