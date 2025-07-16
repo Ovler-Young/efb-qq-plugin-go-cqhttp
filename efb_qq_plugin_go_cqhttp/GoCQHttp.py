@@ -282,6 +282,7 @@ class GoCQHttp(BaseClient):
             return main_text, messages, at_dict
 
         @self.coolq_bot.on_message
+        @self.coolq_bot.on('message_sent')
         async def handle_msg(context: Event):
             """
             Wrap `_handle_msg` to handle the coming message. And
@@ -320,6 +321,7 @@ class GoCQHttp(BaseClient):
                 Finally, we call `async_send_messages_to_master` to send the message.
                 """
 
+                self.logger.info(f"handle_msg called with event: {context.get('post_type', 'unknown')}.{context.get('message_type', 'unknown')}")
                 self.logger.debug(repr(context))
                 msg_elements = context["message"]
                 qq_uid = context["user_id"]
