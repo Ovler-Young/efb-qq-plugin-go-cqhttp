@@ -386,12 +386,10 @@ class GoCQHttp(BaseClient):
                     if not isinstance(messages[i], Message):
                         continue
                     efb_msg: Message = messages[i]
-                    # Add suffix for self-sent messages to distinguish them
-                    suffix = "_self" if is_self_sent else ""
                     efb_msg.uid = (
-                        f"{chat.uid.split('_')[-1]}_{coolq_msg_id}_{i}{suffix}"
+                        f"{chat.uid.split('_')[-1]}_{coolq_msg_id}_{i}"
                         if i > 0
-                        else f"{chat.uid.split('_')[-1]}_{coolq_msg_id}{suffix}"
+                        else f"{chat.uid.split('_')[-1]}_{coolq_msg_id}"
                     )
                     efb_msg.chat = chat
                     efb_msg.author = author
