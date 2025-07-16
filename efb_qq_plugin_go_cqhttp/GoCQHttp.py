@@ -339,12 +339,60 @@ class GoCQHttp(BaseClient):
                                    f"message_id={context.get('message_id')}, "
                                    f"content={context.get('raw_message', '')[:50]}...")
                 
-                user = await self.get_user_info(qq_uid)
-                if context["message_type"] == "private":
-                    context["alias"] = user["remark"]
-                    chat: PrivateChat = await self.chat_manager.build_efb_chat_as_private(context)
+                # For self-sent private messages, we need to get the actual recipient
+                if is_self_sent and context["message_type"] == "private":
+                    try:
+                        # Query the message details to get recipient information
+                        msg_detail = await self.coolq_api_query("get_msg", message_id=context["message_id"])
+                        self.logger.info(f"get_msg result for message_sent: {msg_detail}")
+                        
+                        # Check various possible fields for recipient info
+                        target_uid = None
+                        if "target" in msg_detail:
+                            target_uid = msg_detail["target"]["user_id"]
+                        elif "to_uin" in msg_detail:
+                            target_uid = msg_detail["to_uin"]
+                        elif "target_id" in msg_detail:
+                            target_uid = msg_detail["target_id"]
+                        elif msg_detail.get("message_type") == "private" and "user_id" in msg_detail and msg_detail["user_id"] != qq_uid:
+                            # In some cases, user_id in get_msg might be the recipient for sent messages
+                            target_uid = msg_detail["user_id"]
+                        
+                        if target_uid and target_uid != qq_uid:
+                            # Build context for the recipient, not the sender
+                            target_user = await self.get_user_info(target_uid)
+                            recipient_context = {
+                                "user_id": target_uid,
+                                "alias": target_user["remark"]
+                            }
+                            chat: PrivateChat = await self.chat_manager.build_efb_chat_as_private(recipient_context)
+                            self.logger.info(f"Built chat for recipient {target_uid} instead of sender {qq_uid}")
+                        else:
+                            # If we can't find recipient, create a special "Sent Messages" chat
+                            self.logger.warning(f"Could not determine recipient for message_sent {context['message_id']}, creating fallback chat")
+                            sent_context = {
+                                "user_id": f"sent_messages_{qq_uid}",
+                                "nickname": "Sent Messages",
+                                "alias": "Sent Messages"
+                            }
+                            chat: PrivateChat = await self.chat_manager.build_efb_chat_as_private(sent_context)
+                    except Exception as e:
+                        self.logger.warning(f"Failed to get recipient for self-sent private message: {e}")
+                        # Fallback: create a special "Sent Messages" chat
+                        sent_context = {
+                            "user_id": f"sent_messages_{qq_uid}",
+                            "nickname": "Sent Messages", 
+                            "alias": "Sent Messages"
+                        }
+                        chat: PrivateChat = await self.chat_manager.build_efb_chat_as_private(sent_context)
                 else:
-                    chat = await self.chat_manager.build_efb_chat_as_group(context)
+                    # Normal message handling
+                    user = await self.get_user_info(qq_uid)
+                    if context["message_type"] == "private":
+                        context["alias"] = user["remark"]
+                        chat: PrivateChat = await self.chat_manager.build_efb_chat_as_private(context)
+                    else:
+                        chat = await self.chat_manager.build_efb_chat_as_group(context)
 
                 # Handle author assignment - self-sent messages always use chat.self
                 if is_self_sent:
