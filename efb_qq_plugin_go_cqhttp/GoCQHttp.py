@@ -335,9 +335,7 @@ class GoCQHttp(BaseClient):
                 # Check if this is a self-sent message (from monkey patch)
                 is_self_sent = getattr(context, '_is_self_sent', False)
                 if is_self_sent:
-                    self.logger.info(f"Processing self-sent message: type={context.get('message_type')}, "
-                                   f"message_id={context.get('message_id')}, "
-                                   f"content={context.get('raw_message', '')[:50]}...")
+                    self.logger.info(f"Processing self-sent message: context={context}")
                 
                 # For self-sent private messages, we need to get the actual recipient
                 if is_self_sent and context["message_type"] == "private":
