@@ -108,7 +108,10 @@ class GoCQHttp(BaseClient):
         
         # Apply monkey patch for message_sent events if enabled
         if self.handle_own_messages:
+            self.logger.info("Own message handling enabled - will receive messages sent from other devices")
             self._apply_message_sent_patch()
+        else:
+            self.logger.info("Own message handling disabled - messages from other devices will be ignored")
         
         self.coolq_bot = CQHttp(
             api_root=self.client_config["api_root"],
@@ -329,6 +332,10 @@ class GoCQHttp(BaseClient):
                 
                 # Check if this is a self-sent message (from monkey patch)
                 is_self_sent = getattr(context, '_is_self_sent', False)
+                if is_self_sent:
+                    self.logger.info(f"Processing self-sent message: type={context.get('message_type')}, "
+                                   f"message_id={context.get('message_id')}, "
+                                   f"content={context.get('raw_message', '')[:50]}...")
                 
                 user = await self.get_user_info(qq_uid)
                 if context["message_type"] == "private":
@@ -340,6 +347,7 @@ class GoCQHttp(BaseClient):
                 # Handle author assignment - self-sent messages always use chat.self
                 if is_self_sent:
                     author = chat.self
+                    self.logger.info(f"Assigned chat.self as author for self-sent message in {chat.name}")
                 elif "anonymous" not in context or context["anonymous"] is None:
                     if context["message_type"] == "group":
                         if context["sub_type"] == "notice":
@@ -390,6 +398,10 @@ class GoCQHttp(BaseClient):
 
                     efb_msg.deliver_to = coordinator.master
                     async_send_messages_to_master(efb_msg)
+                    
+                    if is_self_sent:
+                        self.logger.info(f"Successfully forwarded self-sent message {efb_msg.uid} "
+                                        f"from {efb_msg.author.name} in {efb_msg.chat.name}")
 
                 if self.auto_mark_as_read:
                     try:
@@ -1503,6 +1515,7 @@ class GoCQHttp(BaseClient):
             
             @staticmethod
             def patched_from_payload(payload: Dict[str, Any]) -> 'Optional[Event]':
+                logger = logging.getLogger(__name__)
                 try:
                     if payload.get('post_type') == 'message_sent':
                         # Convert go-cqhttp format to aiocqhttp expected format
@@ -1511,12 +1524,17 @@ class GoCQHttp(BaseClient):
                         event = Event._original_from_payload(patched_payload)
                         if event:
                             event._is_self_sent = True
+                            logger.info(f"Processed message_sent event: type={payload.get('message_type')}, "
+                                      f"user_id={payload.get('user_id')}, "
+                                      f"message_id={payload.get('message_id')}")
+                            logger.debug(f"Full message_sent payload: {payload}")
                         return event
                     return Event._original_from_payload(payload)
                 except Exception as e:
                     # Fallback to original method on any error
-                    logging.getLogger(__name__).warning(f"Error in message_sent patch: {e}")
+                    logger.warning(f"Error in message_sent patch: {e}, payload: {payload}")
                     return Event._original_from_payload(payload)
             
             Event.from_payload = patched_from_payload
             self.logger.info("Applied message_sent event patch for own message handling")
+            self.logger.debug("Monkey patch allows handling of 'message_sent' events with 'message_type' field")
