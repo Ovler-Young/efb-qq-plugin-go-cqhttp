@@ -321,7 +321,6 @@ class GoCQHttp(BaseClient):
                 Finally, we call `async_send_messages_to_master` to send the message.
                 """
 
-                self.logger.info(f"handle_msg called with event: {context.get('post_type', 'unknown')}.{context.get('message_type', 'unknown')}")
                 self.logger.debug(repr(context))
                 msg_elements = context["message"]
                 qq_uid = context["user_id"]
@@ -332,16 +331,11 @@ class GoCQHttp(BaseClient):
                 if context["message_type"] == "guild":
                     return
                 
-                # Check if this is a self-sent message (from monkey patch)
+                # Check if this is a self-sent message
                 is_self_sent = getattr(context, '_is_self_sent', False)
-                if is_self_sent:
-                    self.logger.info(f"Processing self-sent message: context={context}")
-                
-                # For self-sent private messages, we need to get the actual recipient
                 if is_self_sent and context["message_type"] == "private":
                     qq_uid = context["target_id"]
 
-                # Normal message handling
                 user = await self.get_user_info(qq_uid)
                 if context["message_type"] == "private":
                     context["alias"] = user["remark"]
@@ -352,7 +346,6 @@ class GoCQHttp(BaseClient):
                 # Handle author assignment - self-sent messages always use chat.self
                 if is_self_sent:
                     author = chat.self
-                    self.logger.info(f"Assigned chat.self as author for self-sent message in {chat.name}")
                 elif "anonymous" not in context or context["anonymous"] is None:
                     if context["message_type"] == "group":
                         if context["sub_type"] == "notice":
