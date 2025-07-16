@@ -104,6 +104,12 @@ class GoCQHttp(BaseClient):
         # To keep the compatibility for old config
         self.coolq_api_timeout = self.client_config.get("api_timeout", 60)
         self.auto_mark_as_read = self.client_config.get("auto_mark_as_read", False)
+        self.handle_own_messages = self.client_config.get("handle_own_messages", False)
+        
+        # Apply monkey patch for message_sent events if enabled
+        if self.handle_own_messages:
+            self._apply_message_sent_patch()
+        
         self.coolq_bot = CQHttp(
             api_root=self.client_config["api_root"],
             access_token=self.client_config["access_token"],
@@ -320,6 +326,10 @@ class GoCQHttp(BaseClient):
                 # ignore qq guild message
                 if context["message_type"] == "guild":
                     return
+                
+                # Check if this is a self-sent message (from monkey patch)
+                is_self_sent = getattr(context, '_is_self_sent', False)
+                
                 user = await self.get_user_info(qq_uid)
                 if context["message_type"] == "private":
                     context["alias"] = user["remark"]
@@ -327,7 +337,10 @@ class GoCQHttp(BaseClient):
                 else:
                     chat = await self.chat_manager.build_efb_chat_as_group(context)
 
-                if "anonymous" not in context or context["anonymous"] is None:
+                # Handle author assignment - self-sent messages always use chat.self
+                if is_self_sent:
+                    author = chat.self
+                elif "anonymous" not in context or context["anonymous"] is None:
                     if context["message_type"] == "group":
                         if context["sub_type"] == "notice":
                             context["event_description"] = "System Notification"
@@ -360,10 +373,12 @@ class GoCQHttp(BaseClient):
                     if not isinstance(messages[i], Message):
                         continue
                     efb_msg: Message = messages[i]
+                    # Add suffix for self-sent messages to distinguish them
+                    suffix = "_self" if is_self_sent else ""
                     efb_msg.uid = (
-                        f"{chat.uid.split('_')[-1]}_{coolq_msg_id}_{i}"
+                        f"{chat.uid.split('_')[-1]}_{coolq_msg_id}_{i}{suffix}"
                         if i > 0
-                        else f"{chat.uid.split('_')[-1]}_{coolq_msg_id}"
+                        else f"{chat.uid.split('_')[-1]}_{coolq_msg_id}{suffix}"
                     )
                     efb_msg.chat = chat
                     efb_msg.author = author
@@ -1474,3 +1489,34 @@ class GoCQHttp(BaseClient):
         self.shutdown_event.set()
         self.loop.stop()
         self.t.join()
+
+    def _apply_message_sent_patch(self):
+        """
+        Apply monkey patch to handle message_sent events from other devices.
+        This patches Event.from_payload to handle go-cqhttp's message_sent format.
+        """
+        from aiocqhttp.event import Event
+        from typing import Dict, Any, Optional
+        
+        if not hasattr(Event, '_original_from_payload'):
+            Event._original_from_payload = Event.from_payload
+            
+            @staticmethod
+            def patched_from_payload(payload: Dict[str, Any]) -> 'Optional[Event]':
+                try:
+                    if payload.get('post_type') == 'message_sent':
+                        # Convert go-cqhttp format to aiocqhttp expected format
+                        patched_payload = payload.copy()
+                        patched_payload['message_sent_type'] = payload.get('message_type', 'unknown')
+                        event = Event._original_from_payload(patched_payload)
+                        if event:
+                            event._is_self_sent = True
+                        return event
+                    return Event._original_from_payload(payload)
+                except Exception as e:
+                    # Fallback to original method on any error
+                    logging.getLogger(__name__).warning(f"Error in message_sent patch: {e}")
+                    return Event._original_from_payload(payload)
+            
+            Event.from_payload = patched_from_payload
+            self.logger.info("Applied message_sent event patch for own message handling")
