@@ -644,7 +644,6 @@ qq_sface_list = {
 
 async def async_get_file(url: str) -> IO:
     max_retries = 5
-    last_exception = None
     
     for attempt in range(1, max_retries + 1):
         temp_file = tempfile.NamedTemporaryFile()
@@ -658,11 +657,9 @@ async def async_get_file(url: str) -> IO:
             return temp_file
         except Exception as e:
             temp_file.close()
-            last_exception = e
             if attempt == max_retries:
                 logger.warning("File download failed.")
                 logger.warning(str(e))
-                logger.warning(f"url: {url}")
                 raise e
             await asyncio.sleep(attempt)
 
