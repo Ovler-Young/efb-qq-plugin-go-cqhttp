@@ -404,6 +404,7 @@ class GoCQHttp(BaseClient):
                     if is_self_sent:
                         self.logger.info(f"Successfully forwarded self-sent message {efb_msg.uid} "
                                         f"from {efb_msg.author.name} in {efb_msg.chat.name}")
+                        self.logger.info(efb_msg)
 
                 if self.auto_mark_as_read:
                     try:
