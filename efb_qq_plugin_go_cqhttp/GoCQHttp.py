@@ -32,8 +32,8 @@ from ehforwarderbot.utils import extra
 from hypercorn.asyncio import serve
 from hypercorn.config import Config as HyperConfig
 from PIL import Image
-from quart.logging import create_logger
 from quart.app import Quart
+from quart.logging import create_logger
 
 from .ChatMgr import ChatManager
 from .Exceptions import (
@@ -53,6 +53,7 @@ from .Utils import (
     strf_time,
 )
 
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 class GoCQHttp(BaseClient):
     """
@@ -106,14 +107,14 @@ class GoCQHttp(BaseClient):
         self.coolq_api_timeout = self.client_config.get("api_timeout", 60)
         self.auto_mark_as_read = self.client_config.get("auto_mark_as_read", False)
         self.handle_own_messages = self.client_config.get("handle_own_messages", False)
-        
+
         # Apply monkey patch for message_sent events if enabled
         if self.handle_own_messages:
             self.logger.info("Own message handling enabled - will receive messages sent from other devices")
             self._apply_message_sent_patch()
         else:
             self.logger.info("Own message handling disabled - messages from other devices will be ignored")
-        
+
         self.coolq_bot = CQHttp(
             api_root=self.client_config["api_root"],
             access_token=self.client_config["access_token"],
@@ -139,7 +140,9 @@ class GoCQHttp(BaseClient):
                 nickname = str(from_user.get("nickname", ""))
                 content_list = msg.get("content", [])
                 header_text = {"data": {"text": f"{remark}（{nickname}）：\n"}, "type": "text"}
-                if not any((c.get("data", {}).get("text", "").strip()) for c in content_list) or (remark == nickname == 1094950020):
+                if not any((c.get("data", {}).get("text", "").strip()) for c in content_list) or (
+                    remark == nickname == 1094950020
+                ):
                     header_text = {"data": {"text": ""}, "type": "text"}
                 footer_text = {"data": {"text": "\n- - - - - - - - - - - - - - -\n"}, "type": "text"}
                 msg["content"].insert(0, header_text)
@@ -330,9 +333,9 @@ class GoCQHttp(BaseClient):
                 # ignore qq guild message
                 if context["message_type"] == "guild":
                     return
-                
+
                 # Check if this is a self-sent message
-                is_self_sent = getattr(context, '_is_self_sent', False)
+                is_self_sent = getattr(context, "_is_self_sent", False)
                 if is_self_sent and context["message_type"] == "private":
                     qq_uid = context["target_id"]
                     context["user_id"] = qq_uid
@@ -719,9 +722,9 @@ class GoCQHttp(BaseClient):
 
         # Conditionally register message_sent handler if patch is applied
         if self.handle_own_messages:
-            self.coolq_bot.on('message_sent')(handle_msg)
+            self.coolq_bot.on("message_sent")(handle_msg)
             self.logger.info("Registered message_sent handler conditionally")
-        
+
         asyncio.run(self.check_status_periodically(run_once=True))
 
     def run_instance(self, host: str, port: int, debug: bool = False):
@@ -1505,34 +1508,37 @@ class GoCQHttp(BaseClient):
         """
         Apply monkey patch to handle message_sent events from other devices.
         This patches Event.from_payload to handle go-cqhttp's message_sent format.
-        
+
         Note: We use global monkey patching instead of subclassing because:
         1. aiocqhttp internally uses Event.from_payload in multiple places
         2. The CQHttp library doesn't provide hooks for custom Event classes
         3. Monkey patching ensures compatibility with existing aiocqhttp ecosystem
         4. Thread-safe implementation prevents race conditions
         """
+        from typing import Any, Dict
+
         from aiocqhttp.event import Event
-        from typing import Dict, Any, Optional
-        
+
         with GoCQHttp._patch_lock:
-            if not hasattr(Event, '_original_from_payload'):
+            if not hasattr(Event, "_original_from_payload"):
                 Event._original_from_payload = Event.from_payload
-                
+
                 @staticmethod
-                def patched_from_payload(payload: Dict[str, Any]) -> 'Optional[Event]':
+                def patched_from_payload(payload: Dict[str, Any]) -> "Optional[Event]":
                     logger = logging.getLogger(__name__)
                     try:
-                        if payload.get('post_type') == 'message_sent':
+                        if payload.get("post_type") == "message_sent":
                             # Convert go-cqhttp format to aiocqhttp expected format
                             patched_payload = payload.copy()
-                            patched_payload['message_sent_type'] = payload.get('message_type', 'unknown')
+                            patched_payload["message_sent_type"] = payload.get("message_type", "unknown")
                             event = Event._original_from_payload(patched_payload)
                             if event:
                                 event._is_self_sent = True
-                                logger.info(f"Processed message_sent event: type={payload.get('message_type')}, "
-                                          f"user_id={payload.get('user_id')}, "
-                                          f"message_id={payload.get('message_id')}")
+                                logger.info(
+                                    f"Processed message_sent event: type={payload.get('message_type')}, "
+                                    f"user_id={payload.get('user_id')}, "
+                                    f"message_id={payload.get('message_id')}"
+                                )
                                 logger.debug(f"Full message_sent payload: {payload}")
                             return event
                         return Event._original_from_payload(payload)
@@ -1540,9 +1546,10 @@ class GoCQHttp(BaseClient):
                         # Fallback to original method on any error
                         logger.warning(f"Error in message_sent patch: {e}, payload: {payload}")
                         return Event._original_from_payload(payload)
-                
+
                 Event.from_payload = patched_from_payload
                 self.logger.info("Applied message_sent event patch for own message handling")
                 self.logger.debug("Monkey patch allows handling of 'message_sent' events with 'message_type' field")
             else:
+                self.logger.debug("Message_sent patch already applied by another instance")
                 self.logger.debug("Message_sent patch already applied by another instance")
