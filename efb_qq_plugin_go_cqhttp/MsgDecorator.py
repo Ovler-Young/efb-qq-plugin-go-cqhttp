@@ -410,10 +410,11 @@ class QQMsgProcessor:
             elif dict_data["app"] == "com.tencent.music.lua":
                 meta_music = dict_data["meta"]["music"]
                 musicUrl = meta_music.get("musicUrl", "")
-                efb_msg.text = "[{title}]({musicUrl})\n{desc}".format(
+                efb_msg.text = "[{tag}] {title} - {desc}\n{musicUrl}".format(
+                    tag=meta_music.get("tag", "音乐"),
                     title=meta_music["title"],
-                    musicUrl=musicUrl,
                     desc=meta_music.get("desc", ""),
+                    musicUrl=musicUrl,
                 )
 
             # QQ频道
@@ -433,6 +434,40 @@ class QQMsgProcessor:
                     guild_name=channel_info.get("guild_name", ""),
                     text=feed_text,
                     jump_url=meta_detail.get("jump_url", "")
+                )
+            
+            elif dict_data["app"] == "com.tencent.eventshare.lua":
+                meta_eventshare = dict_data["meta"]["eventshare"]
+                efb_msg.text = "【{tag}】\n\n{title}\n\n{jumpURL}".format(
+                    tag=meta_eventshare.get("tag", "活动"),
+                    title=meta_eventshare["title"],
+                    jumpURL=meta_eventshare["jumpURL"]
+                )
+
+            elif dict_data["app"] == "com.tencent.contact.lua":
+                meta_contact = dict_data["meta"]["contact"]
+                efb_msg.text = "【{tag}】\n\n{nickname}\n{contact}\n\n{jumpUrl}".format(
+                    tag=meta_contact.get("tag", "联系人"),
+                    nickname=meta_contact["nickname"],
+                    contact=meta_contact.get("contact", ""),
+                    jumpUrl=meta_contact["jumpUrl"]
+                )
+            
+            elif dict_data["app"] == "com.tencent.autoreply":
+                meta_metadata = dict_data["meta"]["metadata"]
+                buttons = "\n".join([button["name"] for button in meta_metadata["buttons"]])
+                efb_msg.text = "【{title}】\n\n{buttons}".format(
+                    title=meta_metadata["title"],
+                    buttons=buttons
+                )
+
+            elif dict_data["app"] == "com.tencent.qun.pro":
+                meta_contact = dict_data["meta"]["contact"]
+                efb_msg.text = "【{tag}】\n\n{title}\n{desc}\n\n{jumpUrl}".format(
+                    tag=meta_contact.get("tag", "频道"),
+                    title=meta_contact["title"],
+                    desc=meta_contact.get("desc", ""),
+                    jumpUrl=meta_contact["jumpUrl"]
                 )
 
             elif dict_data["app"] == "com.tencent.postguidance":
