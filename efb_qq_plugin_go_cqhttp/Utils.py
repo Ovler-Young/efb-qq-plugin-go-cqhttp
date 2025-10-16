@@ -663,7 +663,7 @@ async def async_get_file(url: str) -> IO:
     return temp_file
 
 
-async def async_get_file_with_limit(url: str, max_bytes: Optional[int] = None, errcount: int = 0) -> IO:
+async def async_get_file_with_limit(url: str, max_bytes: Optional[int] = None, errcount: int = 0, tried_ntqq: bool = False) -> IO:
     """
     Stream download a file with an optional byte ceiling.
     Raises DownloadTooLargeError if Content-Length > max_bytes or streamed bytes exceed max_bytes.
@@ -674,7 +674,7 @@ async def async_get_file_with_limit(url: str, max_bytes: Optional[int] = None, e
         temp_file.close()
         raise httpx.HTTPError("Max retries exceeded")
     try:
-        verify_ssl = not re.search(r"(qpic\.cn|[\d\.]+:\d+)", url)
+        verify_ssl = not re.search(r"(qpic\.cn|nt\.qq\.com|[\d\.]+:\d+)", url)
         timeout = httpx.Timeout(30.0, connect=10.0)
         async with httpx.AsyncClient(verify=verify_ssl, timeout=timeout) as client:
             async with client.stream("GET", url) as resp:
@@ -707,7 +707,7 @@ async def async_get_file_with_limit(url: str, max_bytes: Optional[int] = None, e
             query_params = urllib.parse.parse_qs(parsed_url.query)
 
             original_appid = query_params.get("appid", [None])[0]
-            
+
             # Determine the alternative appid
             alternative_appid = None
             if original_appid == "1407":
@@ -718,22 +718,34 @@ async def async_get_file_with_limit(url: str, max_bytes: Optional[int] = None, e
             if alternative_appid:
                 current_query_params = query_params.copy()
                 current_query_params["appid"] = [alternative_appid]
-                
+
                 # Reconstruct the URL with the alternative appid
                 new_query_string = urllib.parse.urlencode(current_query_params, doseq=True)
                 new_image_link = parsed_url._replace(query=new_query_string).geturl()
-                
+
                 try:
-                    temp_file = await async_get_file_with_limit(new_image_link, max_bytes=max_bytes, errcount=errcount + 1)
+                    temp_file = await async_get_file_with_limit(new_image_link, max_bytes=max_bytes, errcount=errcount + 1, tried_ntqq=tried_ntqq)
                     return temp_file
                 except Exception as e:
                     logger.error(f"Failed to download image with alternative appid: {e}")
     except Exception as e:
         logger.error(f"Unexpected error for {url}: {e}")
+
+        # Try NTQQ domain if this is a qpic.cn URL with poor connectivity and we haven't tried it yet
+        if not tried_ntqq and ("c2cpicdw.qpic.cn" in url or "gchat.qpic.cn" in url):
+            logger.info("Retrying with NTQQ domain (multimedia.nt.qq.com.cn) for better connectivity")
+            ntqq_url = url.replace("c2cpicdw.qpic.cn", "multimedia.nt.qq.com.cn").replace("gchat.qpic.cn", "multimedia.nt.qq.com.cn")
+            try:
+                temp_file = await async_get_file_with_limit(ntqq_url, max_bytes=max_bytes, errcount=errcount + 1, tried_ntqq=True)
+                return temp_file
+            except Exception as ntqq_error:
+                logger.error(f"Failed to download from NTQQ domain: {ntqq_error}")
+
+        # Normal retry with same URL
         try:
-            await async_get_file_with_limit(url, max_bytes=max_bytes, errcount=errcount + 1)
+            temp_file = await async_get_file_with_limit(url, max_bytes=max_bytes, errcount=errcount + 1, tried_ntqq=tried_ntqq)
         except Exception as e:
-            logger.error(f"Failed to download image with alternative appid: {e}")
+            logger.error(f"Failed to download image after retry: {e}")
     return temp_file
 
 
