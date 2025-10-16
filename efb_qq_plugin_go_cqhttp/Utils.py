@@ -647,11 +647,32 @@ class DownloadTooLargeError(Exception):
     """Raised when a download exceeds the configured size limit."""
 
 
+def normalize_qq_download_url(url: str) -> str:
+    """
+    Normalize QQ download URLs by replacing IP addresses with multimedia.nt.qq.com.cn domain.
+    This improves connectivity and fixes SSL certificate validation issues.
+
+    Examples:
+    - https://43.128.17.103/download?... -> https://multimedia.nt.qq.com.cn/download?...
+    - https://c2cpicdw.qpic.cn/download?... -> https://multimedia.nt.qq.com.cn/download?...
+    """
+    # Replace IP addresses (with or without port) with NTQQ domain
+    url = re.sub(r'https?://\d+\.\d+\.\d+\.\d+(:\d+)?/', 'https://multimedia.nt.qq.com.cn/', url)
+
+    # Also replace problematic qpic.cn domains with better NTQQ domain
+    url = url.replace("c2cpicdw.qpic.cn", "multimedia.nt.qq.com.cn")
+    url = url.replace("gchat.qpic.cn", "multimedia.nt.qq.com.cn")
+
+    return url
+
+
 async def async_get_file(url: str) -> IO:
+    # Normalize URL to use NTQQ domain for better connectivity
+    url = normalize_qq_download_url(url)
+
     temp_file = tempfile.NamedTemporaryFile()
     try:
-        verify_ssl = not re.search(r"(qpic\.cn|[\d\.]+:\d+)", url)
-        async with httpx.AsyncClient(verify=verify_ssl) as client:
+        async with httpx.AsyncClient() as client:
             resp = await client.get(url)
             temp_file.write(resp.content)
             if temp_file.seek(0, 2) <= 0:
@@ -663,35 +684,26 @@ async def async_get_file(url: str) -> IO:
     return temp_file
 
 
-async def async_get_file_with_limit(url: str, max_bytes: Optional[int] = None, errcount: int = 0, tried_ntqq: bool = False) -> IO:
+async def async_get_file_with_limit(url: str, max_bytes: Optional[int] = None, errcount: int = 0) -> IO:
     """
     Stream download a file with an optional byte ceiling.
     Raises DownloadTooLargeError if Content-Length > max_bytes or streamed bytes exceed max_bytes.
 
     Retry strategy:
-    1. Try original URL (up to 2 retries)
-    2. If 400 error, try alternative appid (1406 <-> 1407)
-    3. Try NTQQ domain (multimedia.nt.qq.com.cn) as fallback for qpic.cn URLs
+    1. Normalize URL (replace IPs and poor domains with multimedia.nt.qq.com.cn)
+    2. Try normalized URL (up to 2 retries)
+    3. If 400 error, try alternative appid (1406 <-> 1407)
     """
+    url = normalize_qq_download_url(url)
+
     temp_file = tempfile.NamedTemporaryFile()
     if errcount > 2:
-        # Before giving up, try NTQQ domain if we haven't already
-        if not tried_ntqq and ("c2cpicdw.qpic.cn" in url or "gchat.qpic.cn" in url):
-            logger.info("Max retries exceeded, attempting NTQQ domain (multimedia.nt.qq.com.cn) as final fallback")
-            ntqq_url = url.replace("c2cpicdw.qpic.cn", "multimedia.nt.qq.com.cn").replace("gchat.qpic.cn", "multimedia.nt.qq.com.cn")
-            try:
-                # Reset errcount for NTQQ domain attempt
-                return await async_get_file_with_limit(ntqq_url, max_bytes=max_bytes, errcount=0, tried_ntqq=True)
-            except Exception as ntqq_error:
-                logger.error(f"Failed to download from NTQQ domain: {ntqq_error}")
-
         logger.error(f"Max retries exceeded for {url}")
         temp_file.close()
         raise httpx.HTTPError("Max retries exceeded")
     try:
-        verify_ssl = not re.search(r"(qpic\.cn|nt\.qq\.com|[\d\.]+:\d+)", url)
         timeout = httpx.Timeout(30.0, connect=10.0)
-        async with httpx.AsyncClient(verify=verify_ssl, timeout=timeout) as client:
+        async with httpx.AsyncClient(timeout=timeout) as client:
             async with client.stream("GET", url) as resp:
                 resp.raise_for_status()
                 cl = resp.headers.get("Content-Length")
@@ -739,26 +751,27 @@ async def async_get_file_with_limit(url: str, max_bytes: Optional[int] = None, e
                 new_image_link = parsed_url._replace(query=new_query_string).geturl()
 
                 try:
-                    temp_file = await async_get_file_with_limit(new_image_link, max_bytes=max_bytes, errcount=errcount + 1, tried_ntqq=tried_ntqq)
+                    temp_file = await async_get_file_with_limit(new_image_link, max_bytes=max_bytes, errcount=errcount + 1)
                     return temp_file
                 except Exception as e:
                     logger.error(f"Failed to download image with alternative appid: {e}")
         # For other HTTP errors, fall through to retry logic below
         temp_file.close()
-        temp_file = await async_get_file_with_limit(url, max_bytes=max_bytes, errcount=errcount + 1, tried_ntqq=tried_ntqq)
+        temp_file = await async_get_file_with_limit(url, max_bytes=max_bytes, errcount=errcount + 1)
     except Exception as e:
         logger.error(f"Unexpected error for {url}: {e}")
         temp_file.close()
         # Retry with incremented error count
-        temp_file = await async_get_file_with_limit(url, max_bytes=max_bytes, errcount=errcount + 1, tried_ntqq=tried_ntqq)
+        temp_file = await async_get_file_with_limit(url, max_bytes=max_bytes, errcount=errcount + 1)
     return temp_file
 
 
 def sync_get_file(url: str) -> IO:
+    url = normalize_qq_download_url(url)
+
     temp_file = tempfile.NamedTemporaryFile()
     try:
-        verify_ssl = not re.search(r"(qpic\.cn|[\d\.]+:\d+)", url)
-        resp = httpx.get(url, verify=verify_ssl)
+        resp = httpx.get(url)
         temp_file.write(resp.content)
         if temp_file.seek(0, 2) <= 0:
             raise EOFError("File downloaded is Empty")
