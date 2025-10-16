@@ -667,9 +667,24 @@ async def async_get_file_with_limit(url: str, max_bytes: Optional[int] = None, e
     """
     Stream download a file with an optional byte ceiling.
     Raises DownloadTooLargeError if Content-Length > max_bytes or streamed bytes exceed max_bytes.
+
+    Retry strategy:
+    1. Try original URL (up to 2 retries)
+    2. If 400 error, try alternative appid (1406 <-> 1407)
+    3. Try NTQQ domain (multimedia.nt.qq.com.cn) as fallback for qpic.cn URLs
     """
     temp_file = tempfile.NamedTemporaryFile()
     if errcount > 2:
+        # Before giving up, try NTQQ domain if we haven't already
+        if not tried_ntqq and ("c2cpicdw.qpic.cn" in url or "gchat.qpic.cn" in url):
+            logger.info("Max retries exceeded, attempting NTQQ domain (multimedia.nt.qq.com.cn) as final fallback")
+            ntqq_url = url.replace("c2cpicdw.qpic.cn", "multimedia.nt.qq.com.cn").replace("gchat.qpic.cn", "multimedia.nt.qq.com.cn")
+            try:
+                # Reset errcount for NTQQ domain attempt
+                return await async_get_file_with_limit(ntqq_url, max_bytes=max_bytes, errcount=0, tried_ntqq=True)
+            except Exception as ntqq_error:
+                logger.error(f"Failed to download from NTQQ domain: {ntqq_error}")
+
         logger.error(f"Max retries exceeded for {url}")
         temp_file.close()
         raise httpx.HTTPError("Max retries exceeded")
@@ -728,24 +743,14 @@ async def async_get_file_with_limit(url: str, max_bytes: Optional[int] = None, e
                     return temp_file
                 except Exception as e:
                     logger.error(f"Failed to download image with alternative appid: {e}")
+        # For other HTTP errors, fall through to retry logic below
+        temp_file.close()
+        temp_file = await async_get_file_with_limit(url, max_bytes=max_bytes, errcount=errcount + 1, tried_ntqq=tried_ntqq)
     except Exception as e:
         logger.error(f"Unexpected error for {url}: {e}")
-
-        # Try NTQQ domain if this is a qpic.cn URL with poor connectivity and we haven't tried it yet
-        if not tried_ntqq and ("c2cpicdw.qpic.cn" in url or "gchat.qpic.cn" in url):
-            logger.info("Retrying with NTQQ domain (multimedia.nt.qq.com.cn) for better connectivity")
-            ntqq_url = url.replace("c2cpicdw.qpic.cn", "multimedia.nt.qq.com.cn").replace("gchat.qpic.cn", "multimedia.nt.qq.com.cn")
-            try:
-                temp_file = await async_get_file_with_limit(ntqq_url, max_bytes=max_bytes, errcount=errcount + 1, tried_ntqq=True)
-                return temp_file
-            except Exception as ntqq_error:
-                logger.error(f"Failed to download from NTQQ domain: {ntqq_error}")
-
-        # Normal retry with same URL
-        try:
-            temp_file = await async_get_file_with_limit(url, max_bytes=max_bytes, errcount=errcount + 1, tried_ntqq=tried_ntqq)
-        except Exception as e:
-            logger.error(f"Failed to download image after retry: {e}")
+        temp_file.close()
+        # Retry with incremented error count
+        temp_file = await async_get_file_with_limit(url, max_bytes=max_bytes, errcount=errcount + 1, tried_ntqq=tried_ntqq)
     return temp_file
 
 
