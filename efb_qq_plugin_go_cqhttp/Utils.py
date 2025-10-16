@@ -1,6 +1,6 @@
 import logging
 import tempfile
-from typing import IO, Optional, Union
+from typing import IO, Optional
 import re
 
 import httpx
@@ -867,17 +867,10 @@ def param_spliter(str_param):
     return param
 
 
-async def download_file(download_url: str) -> Union[IO, str]:
-    try:
-        return await async_get_file(download_url)
-    except Exception as e:
-        logger.warning("Error occurs when downloading files: " + str(e))
-        return "Error occurs when downloading files: " + str(e)
-
-
-async def download_file_with_limit(download_url: str, max_bytes: int) -> IO:
+async def download_file_with_limit(download_url: str, max_bytes: Optional[int] = None) -> IO:
     """
-    Download with size ceiling; raises DownloadTooLargeError on exceed, or other exceptions on error.
+    Download with optional size ceiling; raises DownloadTooLargeError on exceed, or other exceptions on error.
+    If max_bytes is None, no size limit is enforced.
     """
     return await async_get_file_with_limit(download_url, max_bytes=max_bytes)
 

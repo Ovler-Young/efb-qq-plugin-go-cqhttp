@@ -10,7 +10,7 @@ import magic
 from ehforwarderbot import Chat, Message, MsgType
 from ehforwarderbot.message import LinkAttribute, LocationAttribute, Substitutions
 
-from .Utils import cq_get_image, download_file, download_voice, download_file_with_limit, DownloadTooLargeError
+from .Utils import cq_get_image, download_voice, download_file_with_limit, DownloadTooLargeError
 
 if TYPE_CHECKING:
     from .GoCQHttp import GoCQHttp
@@ -523,22 +523,12 @@ class QQMsgProcessor:
         limit = getattr(self.inst, "file_size_limit_bytes", None)
 
         try:
-            if limit:
-                efb_file = await download_file_with_limit(data["url"], max_bytes=limit)
-            else:
-                efb_file = await download_file(data["url"])
-
-            if efb_file is None:
-                efb_msg = Message()
-                efb_msg.type = MsgType.Text
-                efb_msg.text = f"[Video download failed locally, but receiving platform may still be able to load it]\n{data.get('url', '')}"
-                self.logger.warning("Failed to download video from URL: %s", data.get("url", "N/A"))
-                return [efb_msg]
+            efb_file = await download_file_with_limit(data["url"], max_bytes=limit)
 
             mime = magic.from_file(efb_file.name, mime=True)
             if isinstance(mime, bytes):
                 mime = mime.decode()
-            efb_msg = Message(type=MsgType.Video, file=efb_file, filename=efb_file.name, mime=mime)
+            efb_msg = Message(type=MsgType.Video, file=efb_file, filename=efb_file.name, mime=mime, path=efb_file.name)
             return [efb_msg]
         except DownloadTooLargeError:
             # Over-limit: return a File-type message with link in text, no file
@@ -548,11 +538,11 @@ class QQMsgProcessor:
             mb = int(limit / (1024 * 1024)) if limit else 0
             placeholder.text = f"[Video exceeds size limit ({mb} MB). Not auto-downloaded]\n{data.get('url','')}"
             return [placeholder]
-        except Exception:
+        except Exception as e:
             efb_msg = Message()
             efb_msg.type = MsgType.Text
-            efb_msg.text = f"[Video download failed]\n{data.get('url', '')}"
-            self.logger.warning("Failed to download video from URL: %s", data.get("url", "N/A"))
+            efb_msg.text = f"[Video download failed: {str(e)}]\n{data.get('url', '')}"
+            self.logger.warning("Failed to download video from URL: %s, Error: %s", data.get("url", "N/A"), str(e))
             return [efb_msg]
 
     def qq_redbag_wrapper(self, data, _: Chat = None):
