@@ -45,7 +45,6 @@ from .MsgDecorator import QQMsgProcessor
 from .Utils import (
     async_send_messages_to_master,
     coolq_text_encode,
-    download_file,
     download_file_with_limit,
     download_group_avatar,
     download_user_avatar,
