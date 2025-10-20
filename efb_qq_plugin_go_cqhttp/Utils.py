@@ -652,10 +652,16 @@ def normalize_qq_download_url(url: str) -> str:
     Normalize QQ download URLs by replacing IP addresses with multimedia.nt.qq.com.cn domain.
     This improves connectivity and fixes SSL certificate validation issues.
 
+    Note: ftn_handler URLs are NOT normalized as they won't work properly with the domain.
+
     Examples:
     - https://43.128.17.103/download?... -> https://multimedia.nt.qq.com.cn/download?...
     - https://c2cpicdw.qpic.cn/download?... -> https://multimedia.nt.qq.com.cn/download?...
     """
+    # Skip normalization for ftn_handler URLs - they work better with direct IPs
+    if '/ftn_handler/' in url:
+        return url
+
     # Replace IP addresses (with or without port) with NTQQ domain
     url = re.sub(r'https?://\d+\.\d+\.\d+\.\d+(:\d+)?/', 'https://multimedia.nt.qq.com.cn/', url)
 
