@@ -1154,14 +1154,19 @@ class GoCQHttp(BaseClient):
         except NetworkError as e:
             raise CoolQDisconnectedException(("Unable to connect to CoolQ Client!" "Error Message:\n{}").format(str(e)))
         except aiocqhttp.Error as ex:
+            # Return code 100 is OK and should not be treated as an error
+            retcode = ex.retcode if hasattr(ex, "retcode") else None
+            if retcode == 100:
+                return None
+
             api_ex = CoolQAPIFailureException(
                 "CoolQ HTTP API encountered an error!\nStatus Code:{} Return Code:{}".format(
                     ex.status_code if hasattr(ex, "status_code") else "Unknown",
-                    ex.retcode if hasattr(ex, "retcode") else "Unknown",
+                    retcode if retcode is not None else "Unknown",
                 )
             )
             api_ex.status_code = ex.status_code if hasattr(ex, "status_code") else None
-            api_ex.retcode = ex.retcode if hasattr(ex, "retcode") else None
+            api_ex.retcode = retcode
             raise api_ex
         else:
             return res
