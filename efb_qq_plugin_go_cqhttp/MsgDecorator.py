@@ -132,7 +132,7 @@ class QQMsgProcessor:
 
     def qq_small_face_wrapper(self, data, chat: Chat = None):
         # todo this function's maybe not necessary?
-        pass
+        return []
 
     def qq_sign_wrapper(self, data, _: Chat = None):
         location = ("at {}").format(data["location"]) if "location" in data else ("at Unknown Place")
@@ -558,7 +558,7 @@ class QQMsgProcessor:
 
     def qq_file_wrapper(self, data, _: Chat = None):
         # no need to return, the async_download_file and handle_group_file_upload_msg handle it
-        pass
+        return []
 
     def qq_unsupported_wrapper(self, data, _: Chat = None):
         efb_msg = Message(type=MsgType.Unsupported, text=data)
