@@ -251,16 +251,32 @@ class GoCQHttp(BaseClient):
                     self.logger.debug(f"Failed to process reply message with msg_data: {msg_data}")
                     main_text = ""
             elif msg_type == "forward":
-                forward_msgs = (await self.coolq_api_query("get_forward_msg", message_id=msg_data["id"]))["messages"]
-                logging.debug(f"Forwarded message: {forward_msgs}")
-                fmt_forward_msgs = await forward_msgs_wrapper(forward_msgs)
-                logging.debug(f"Formated forwarded message: {forward_msgs}")
-                header_msg = {"data": {"text": "合并转发消息开始\n- - - - - - - - - - - - - - -\n"}, "type": "text"}
-                footer_msg = {"data": {"text": "合并转发消息结束"}, "type": "text"}
-                fmt_forward_msgs.insert(0, header_msg)
-                fmt_forward_msgs.append(footer_msg)
-                main_text, messages, _ = await message_elements_wrapper(context, fmt_forward_msgs, chat)
-                return main_text, messages, []
+                try:
+                    result = await self.coolq_api_query("get_forward_msg", message_id=msg_data["id"])
+                    if result is None:
+                        self.logger.warning(f"Failed to fetch forward message {msg_data.get('id')}: API returned None")
+                        main_text = "[合并转发消息获取失败]"
+                        return main_text, messages, at_list
+
+                    forward_msgs = result["messages"]
+                    logging.debug(f"Forwarded message: {forward_msgs}")
+                    fmt_forward_msgs = await forward_msgs_wrapper(forward_msgs)
+                    logging.debug(f"Formated forwarded message: {forward_msgs}")
+                    header_msg = {"data": {"text": "合并转发消息开始\n- - - - - - - - - - - - - - -\n"}, "type": "text"}
+                    footer_msg = {"data": {"text": "合并转发消息结束"}, "type": "text"}
+                    fmt_forward_msgs.insert(0, header_msg)
+                    fmt_forward_msgs.append(footer_msg)
+                    main_text, messages, _ = await message_elements_wrapper(context, fmt_forward_msgs, chat)
+                    return main_text, messages, []
+                except (KeyError, TypeError) as e:
+                    self.logger.error(f"Error processing forward message: {e}")
+                    self.logger.debug(f"Failed forward message data: {msg_data}")
+                    main_text = "[合并转发消息处理失败]"
+                    return main_text, messages, at_list
+                except Exception as e:
+                    self.logger.error(f"Unexpected error processing forward message: {e}", exc_info=True)
+                    main_text = "[合并转发消息处理失败]"
+                    return main_text, messages, at_list
             else:
                 messages.extend(await self.call_msg_decorator(msg_type, msg_data, chat))
             return main_text, messages, at_list
