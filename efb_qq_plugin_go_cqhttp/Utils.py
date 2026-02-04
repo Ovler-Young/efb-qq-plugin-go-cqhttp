@@ -690,7 +690,7 @@ async def async_get_file(url: str) -> IO:
     return temp_file
 
 
-async def async_get_file_with_limit(url: str, max_bytes: Optional[int] = None, errcount: int = 0) -> IO:
+async def async_get_file_with_limit(url: str, max_bytes: Optional[int] = None, errcount: int = 0) -> Optional[IO]:
     """
     Stream download a file with an optional byte ceiling.
     Raises DownloadTooLargeError if Content-Length > max_bytes or streamed bytes exceed max_bytes.
@@ -733,6 +733,10 @@ async def async_get_file_with_limit(url: str, max_bytes: Optional[int] = None, e
                     raise EOFError("File downloaded is Empty")
                 temp_file.seek(0)
     except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            logger.debug(f"404 Not Found for {url}")
+            temp_file.close()
+            return None
         if e.response.status_code == 400:
             logger.warning(f"Appid mismatch for {url}, attempting retry with alternative appid.")
             # Extract appid from the URL
