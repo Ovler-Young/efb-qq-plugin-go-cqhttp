@@ -734,6 +734,21 @@ async def async_get_file_with_limit(url: str, max_bytes: Optional[int] = None, e
                 temp_file.seek(0)
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 404:
+            # Try alternative URL for offpic_new: convert to gchatpic_new format
+            # e.g. https://multimedia.nt.qq.com.cn/offpic_new/0/{07CE35DD-67CA-E75F-CC6A-75F3CDC8AAB5}.jpg/0?term=3
+            #   -> https://gchat.qpic.cn/gchatpic_new/0/0-0-07CE35DD67CAE75FCC6A75F3CDC8AAB5/0?term=2
+            if "/offpic_new/" in url:
+                # Extract UUID pattern: {XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}
+                uuid_match = re.search(r"\{([0-9A-Fa-f-]+)\}", url)
+                if uuid_match:
+                    uuid_with_dashes = uuid_match.group(1)
+                    uuid_clean = uuid_with_dashes.replace("-", "").upper()
+                    alt_url = f"https://gchat.qpic.cn/gchatpic_new/0/0-0-{uuid_clean}/0?term=2"
+                    logger.debug(f"404 for offpic_new, trying gchatpic_new: {alt_url}")
+                    temp_file.close()
+                    return await async_get_file_with_limit(
+                        alt_url, max_bytes=max_bytes, errcount=errcount + 1
+                    )
             logger.debug(f"404 Not Found for {url}")
             temp_file.close()
             return None
