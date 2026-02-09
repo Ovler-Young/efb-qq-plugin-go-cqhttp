@@ -793,7 +793,7 @@ async def async_get_file_with_limit(
                     )
                     return temp_file
                 except Exception as e:
-                    logger.error(
+                    logger.debug(
                         f"Failed to download image with alternative appid: {e}"
                     )
         # For other HTTP errors, fall through to retry logic below
