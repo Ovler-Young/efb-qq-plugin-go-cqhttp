@@ -659,11 +659,13 @@ def normalize_qq_download_url(url: str) -> str:
     - https://c2cpicdw.qpic.cn/download?... -> https://multimedia.nt.qq.com.cn/download?...
     """
     # Skip normalization for ftn_handler URLs - they work better with direct IPs
-    if '/ftn_handler/' in url:
+    if "/ftn_handler/" in url:
         return url
 
     # Replace IP addresses (with or without port) with NTQQ domain
-    url = re.sub(r'https?://\d+\.\d+\.\d+\.\d+(:\d+)?/', 'https://multimedia.nt.qq.com.cn/', url)
+    url = re.sub(
+        r"https?://\d+\.\d+\.\d+\.\d+(:\d+)?/", "https://multimedia.nt.qq.com.cn/", url
+    )
 
     # Also replace problematic qpic.cn domains with better NTQQ domain
     url = url.replace("c2cpicdw.qpic.cn", "multimedia.nt.qq.com.cn")
@@ -690,7 +692,9 @@ async def async_get_file(url: str) -> IO:
     return temp_file
 
 
-async def async_get_file_with_limit(url: str, max_bytes: Optional[int] = None, errcount: int = 0) -> Optional[IO]:
+async def async_get_file_with_limit(
+    url: str, max_bytes: Optional[int] = None, errcount: int = 0
+) -> Optional[IO]:
     """
     Stream download a file with an optional byte ceiling.
     Raises DownloadTooLargeError if Content-Length > max_bytes or streamed bytes exceed max_bytes.
@@ -716,7 +720,9 @@ async def async_get_file_with_limit(url: str, max_bytes: Optional[int] = None, e
                 if max_bytes is not None and cl is not None:
                     try:
                         if int(cl) > max_bytes:
-                            raise DownloadTooLargeError(f"Content-Length {cl} exceeds limit {max_bytes}")
+                            raise DownloadTooLargeError(
+                                f"Content-Length {cl} exceeds limit {max_bytes}"
+                            )
                     except ValueError:
                         pass  # malformed header; ignore and stream-check
 
@@ -726,7 +732,9 @@ async def async_get_file_with_limit(url: str, max_bytes: Optional[int] = None, e
                         continue
                     total += len(chunk)
                     if max_bytes is not None and total > max_bytes:
-                        raise DownloadTooLargeError(f"Downloaded {total} exceeds limit {max_bytes}")
+                        raise DownloadTooLargeError(
+                            f"Downloaded {total} exceeds limit {max_bytes}"
+                        )
                     temp_file.write(chunk)
 
                 if temp_file.seek(0, 2) <= 0:
@@ -753,7 +761,9 @@ async def async_get_file_with_limit(url: str, max_bytes: Optional[int] = None, e
             temp_file.close()
             return None
         if e.response.status_code == 400:
-            logger.warning(f"Appid mismatch for {url}, attempting retry with alternative appid.")
+            logger.warning(
+                f"Appid mismatch for {url}, attempting retry with alternative appid."
+            )
             # Extract appid from the URL
             parsed_url = urllib.parse.urlparse(url)
             query_params = urllib.parse.parse_qs(parsed_url.query)
@@ -772,22 +782,32 @@ async def async_get_file_with_limit(url: str, max_bytes: Optional[int] = None, e
                 current_query_params["appid"] = [alternative_appid]
 
                 # Reconstruct the URL with the alternative appid
-                new_query_string = urllib.parse.urlencode(current_query_params, doseq=True)
+                new_query_string = urllib.parse.urlencode(
+                    current_query_params, doseq=True
+                )
                 new_image_link = parsed_url._replace(query=new_query_string).geturl()
 
                 try:
-                    temp_file = await async_get_file_with_limit(new_image_link, max_bytes=max_bytes, errcount=errcount + 1)
+                    temp_file = await async_get_file_with_limit(
+                        new_image_link, max_bytes=max_bytes, errcount=errcount + 1
+                    )
                     return temp_file
                 except Exception as e:
-                    logger.error(f"Failed to download image with alternative appid: {e}")
+                    logger.error(
+                        f"Failed to download image with alternative appid: {e}"
+                    )
         # For other HTTP errors, fall through to retry logic below
         temp_file.close()
-        temp_file = await async_get_file_with_limit(url, max_bytes=max_bytes, errcount=errcount + 1)
+        temp_file = await async_get_file_with_limit(
+            url, max_bytes=max_bytes, errcount=errcount + 1
+        )
     except Exception as e:
         logger.error(f"Unexpected error for {url}: {e}")
         temp_file.close()
         # Retry with incremented error count
-        temp_file = await async_get_file_with_limit(url, max_bytes=max_bytes, errcount=errcount + 1)
+        temp_file = await async_get_file_with_limit(
+            url, max_bytes=max_bytes, errcount=errcount + 1
+        )
     return temp_file
 
 
@@ -807,7 +827,9 @@ def sync_get_file(url: str) -> IO:
     return temp_file
 
 
-async def cq_get_image(image_link: str, max_bytes: Optional[int] = None) -> Optional[IO]:
+async def cq_get_image(
+    image_link: str, max_bytes: Optional[int] = None
+) -> Optional[IO]:
     """
     Download image from QQ with optional size limit.
     """
@@ -892,7 +914,9 @@ def param_spliter(str_param):
     return param
 
 
-async def download_file_with_limit(download_url: str, max_bytes: Optional[int] = None) -> IO:
+async def download_file_with_limit(
+    download_url: str, max_bytes: Optional[int] = None
+) -> IO:
     """
     Download with optional size ceiling; raises DownloadTooLargeError on exceed, or other exceptions on error.
     If max_bytes is None, no size limit is enforced.
@@ -928,7 +952,9 @@ async def download_voice(voice_url: str):
             with tempfile.NamedTemporaryFile() as pcm_file:
                 pilk.decode(origin_file.name, pcm_file.name)
                 audio_file = tempfile.NamedTemporaryFile()
-                pydub.AudioSegment.from_raw(file=pcm_file, sample_width=2, frame_rate=24000, channels=1).export(
+                pydub.AudioSegment.from_raw(
+                    file=pcm_file, sample_width=2, frame_rate=24000, channels=1
+                ).export(
                     audio_file, format="ogg", codec="libopus", parameters=["-vbr", "on"]
                 )
         else:

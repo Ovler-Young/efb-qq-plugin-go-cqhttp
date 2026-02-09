@@ -74,12 +74,18 @@ class ChatManager:
             efb_chat.uid = "group" + "_" + str(chat_uid)
             i = await self.channel.QQClient.get_group_info(chat_uid)
             if i is not None:
-                efb_chat.name = str(i["group_name"]) if "group_name" not in context else str(context["group_name"])
+                efb_chat.name = (
+                    str(i["group_name"])
+                    if "group_name" not in context
+                    else str(context["group_name"])
+                )
             else:
                 efb_chat.name = str(chat_uid)
             efb_chat.vendor_specific = {"is_discuss": False}
             if update_member:
-                members = await self.channel.QQClient.get_group_member_list(chat_uid, False)
+                members = await self.channel.QQClient.get_group_member_list(
+                    chat_uid, False
+                )
                 if members:
                     for member in members:
                         efb_chat.add_member(
