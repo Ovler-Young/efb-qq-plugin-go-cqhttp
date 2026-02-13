@@ -52,7 +52,11 @@ class QQMsgProcessor:
 
         if efb_file is None:
             efb_msg.type = MsgType.Text
-            efb_msg.text = f"[Image download failed locally, but receiving platform may still be able to load it]\n{data.get('url', '')}"
+            url = data.get('url', '')
+            if 'gchatpic_new' in url:
+                efb_msg.text = "[Image download failed]"
+            else:
+                efb_msg.text = f"[Image download failed locally, but receiving platform may still be able to load it]\n{url}"
             self.logger.warning("Image download failed. URL: %s, File: %s", data.get("url", "N/A"), data.get("file", "N/A"))
             return [efb_msg]
 
