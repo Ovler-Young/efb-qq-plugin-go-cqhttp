@@ -238,55 +238,9 @@ class GoCQHttp(BaseClient):
                     at_dict = ((substitution_begin, substitution_end), chat.self)
                     at_list.append(at_dict)
             elif msg_type == "reply":
-                # TODO: FIX, KeyError "qq", can't receive reply message
-                try:
-                    if "qq" in msg_data:
-                        # 如果 msg_data 中有 'qq' 字段，直接使用
-                        ref_user = await self.get_user_info(msg_data["qq"])
-                        main_text = (
-                            f"「{ref_user['remark']}（{ref_user['nickname']}）：{msg_data.get('text', msg_data)} 」\n"
-                            "- - - - - - - - - - - - - - -\n"
-                        )
-                    else:
-                        # 如果没有 'qq'，通过 'id' 调用 get_msg 获取完整消息
-                        original_msg = await self.coolq_api_query(
-                            "get_msg", message_id=msg_data["id"]
-                        )
-                        ref_user = await self.get_user_info(
-                            original_msg["sender"]["user_id"]
-                        )
-                        original_text = original_msg.get("raw_message")
-                        if (
-                            not original_text
-                            and "message" in original_msg
-                            and isinstance(original_msg["message"], list)
-                        ):
-                            text_segments = [
-                                seg["data"]["text"]
-                                for seg in original_msg["message"]
-                                if seg["type"] == "text"
-                                and "data" in seg
-                                and "text" in seg["data"]
-                            ]
-                            original_text = "".join(text_segments)
-                        if not original_text:
-                            original_text = ""
-                        main_text = (
-                            f"「{ref_user['remark']}（{ref_user['nickname']}）：{original_text} 」\n"
-                            "- - - - - - - - - - - - - - -\n"
-                        )
-                except KeyError as e:
-                    self.logger.error(f"KeyError occurred: {e}")
-                    self.logger.debug(
-                        f"Failed to process reply message with msg_data: {msg_data}"
-                    )
-                    main_text = ""
-                except Exception as e:
-                    self.logger.error(f"An unexpected error occurred: {e}")
-                    self.logger.debug(
-                        f"Failed to process reply message with msg_data: {msg_data}"
-                    )
-                    main_text = ""
+                if "id" in msg_data:
+                    context["_reply_target_cq_msg_id"] = msg_data["id"]
+                main_text = ""
             elif msg_type == "forward":
                 try:
                     result = await self.coolq_api_query(
@@ -481,7 +435,15 @@ class GoCQHttp(BaseClient):
                     )
                     efb_msg.chat = chat
                     efb_msg.author = author
-                    # if qq_uid != '80000000':
+
+                    # Set reply target for native reply support
+                    reply_target_cq_msg_id = context.get("_reply_target_cq_msg_id")
+                    if reply_target_cq_msg_id is not None:
+                        target_msg = Message()
+                        target_msg.uid = f"{chat.uid.split('_')[-1]}_{reply_target_cq_msg_id}"
+                        target_msg.chat = chat
+                        target_msg.type = MsgType.Text
+                        efb_msg.target = target_msg
 
                     # Append discuss group into group list
                     if (
