@@ -141,6 +141,7 @@ class GoCQHttp(BaseClient):
 
         self.loop = asyncio.get_event_loop()
         self.shutdown_event = asyncio.Event()
+        self._group_name_last_check: Dict[int, float] = {}
 
         asyncio.set_event_loop(self.loop)
 
@@ -423,6 +424,9 @@ class GoCQHttp(BaseClient):
                     )
                 else:
                     chat = await self.chat_manager.build_efb_chat_as_group(context)
+                    await self._check_group_name_update(
+                        context["group_id"], chat
+                    )
 
                 # Handle author assignment - self-sent messages always use chat.self
                 if is_self_sent:
@@ -1479,6 +1483,50 @@ class GoCQHttp(BaseClient):
         else:
             self.logger.warning("Failed to update friend list")
 
+    async def _check_group_name_update(self, group_id: int, chat: GroupChat):
+        """Rate-limited check for group name changes via no_cache API call.
+
+        Compares the fresh group_name against the cached value and, when
+        different, sends a notification to master and updates the local cache
+        so that subsequent messages carry the new name.
+        """
+        now = time.time()
+        if now - self._group_name_last_check.get(group_id, 0) < 600:
+            return
+        self._group_name_last_check[group_id] = now
+        try:
+            fresh_info = await self.coolq_api_query(
+                "get_group_info", group_id=group_id, no_cache=True
+            )
+            if not fresh_info:
+                return
+            old_info = self.group_dict.get(group_id)
+            old_name = old_info.get("group_name") if old_info else None
+            new_name = fresh_info.get("group_name")
+            self.group_dict[group_id] = fresh_info
+            if new_name:
+                chat.name = new_name
+            if old_name and new_name and old_name != new_name:
+                self.logger.info(
+                    "Group %s name changed: '%s' -> '%s'",
+                    group_id,
+                    old_name,
+                    new_name,
+                )
+                notice_ctx = {
+                    "group_id": group_id,
+                    "event_description": "\u2139 Group Name Change Event",
+                    "message": (
+                        f"Group name changed\n"
+                        f"'{old_name}' \u2192 '{new_name}'"
+                    ),
+                }
+                await self.send_efb_group_notice(notice_ctx)
+        except Exception as e:
+            self.logger.debug(
+                "Failed to check group name for %s: %s", group_id, e
+            )
+
     async def update_group_list(self):
         """
         Call `/get_group_list` to get the group list to `group_list`.
@@ -1494,8 +1542,10 @@ class GoCQHttp(BaseClient):
         + `max_member_count`: max member count
 
         Iterate the `group_list` and update `group_dict` with `group_id` as key.
+        Also detects group name changes and sends notifications.
         """
 
+        old_group_dict = dict(self.group_dict)
         self.group_list = await self.coolq_api_query("get_group_list")
         if self.group_list:
             self.logger.debug(
@@ -1503,6 +1553,28 @@ class GoCQHttp(BaseClient):
             )
             for group in self.group_list:
                 self.group_dict[group["group_id"]] = group
+            if old_group_dict:
+                for group in self.group_list:
+                    gid = group["group_id"]
+                    old = old_group_dict.get(gid)
+                    if old and old.get("group_name") != group.get("group_name"):
+                        old_name = old.get("group_name", str(gid))
+                        new_name = group.get("group_name", str(gid))
+                        self.logger.info(
+                            "Group %s name changed: '%s' -> '%s'",
+                            gid,
+                            old_name,
+                            new_name,
+                        )
+                        context = {
+                            "group_id": gid,
+                            "event_description": "\u2139 Group Name Change Event",
+                            "message": (
+                                f"Group name changed\n"
+                                f"'{old_name}' \u2192 '{new_name}'"
+                            ),
+                        }
+                        await self.send_efb_group_notice(context)
         else:
             self.logger.warning("Failed to update group list")
 
