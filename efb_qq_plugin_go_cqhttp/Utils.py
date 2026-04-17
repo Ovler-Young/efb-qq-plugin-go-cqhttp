@@ -3,6 +3,8 @@ import tempfile
 from typing import IO, Optional
 import re
 
+import base64
+import binascii
 import httpx
 import urllib.parse
 import pilk
@@ -899,6 +901,55 @@ def coolq_para_encode(text: str):
     for r in expr:
         text = text.replace(*r)
     return text
+
+
+def normalize_qzone_share_url(url: str) -> str:
+    """
+    Normalize Qzone share URLs so they are directly accessible in browsers.
+
+    Handles:
+    - mqqapi://qzoneschema/?schema=<base64(mqzone://...)>
+    - mqzone://arouse/detail?... -> https://h5.qzone.qq.com/ugc/share/?...
+    """
+    if not url:
+        return url
+
+    url = url.strip()
+    try:
+        parsed = urllib.parse.urlparse(url)
+    except Exception:
+        return url
+
+    # Decode wrapped schema:
+    # mqqapi://qzoneschema/?schema=bXF6b25lOi8v...
+    if parsed.scheme.lower() == "mqqapi" and parsed.netloc.lower() == "qzoneschema":
+        try:
+            qs = urllib.parse.parse_qs(parsed.query)
+            schema = (qs.get("schema") or [None])[0]
+            if not schema:
+                return url
+            schema = schema.strip()
+            schema += "=" * (-len(schema) % 4)  # base64 padding
+            try:
+                decoded_bytes = base64.urlsafe_b64decode(schema)
+            except (binascii.Error, ValueError):
+                decoded_bytes = base64.b64decode(schema)
+            decoded = decoded_bytes.decode("utf-8", "replace").strip()
+            # May still be another layer; normalize recursively.
+            return normalize_qzone_share_url(decoded)
+        except Exception:
+            return url
+
+    # Convert mqzone schema to an accessible h5 link.
+    # mqzone://arouse/detail?... -> https://h5.qzone.qq.com/ugc/share/?...
+    if parsed.scheme.lower() == "mqzone" and parsed.netloc.lower() == "arouse":
+        if parsed.path.rstrip("/").lower() == "/detail":
+            query = parsed.query or ""
+            if query:
+                return "https://h5.qzone.qq.com/ugc/share/?" + query
+            return "https://h5.qzone.qq.com/ugc/share/"
+
+    return url
 
 
 def param_spliter(str_param):

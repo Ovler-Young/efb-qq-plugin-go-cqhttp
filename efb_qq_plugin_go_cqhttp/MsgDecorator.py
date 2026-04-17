@@ -15,6 +15,7 @@ from .Utils import (
     download_voice,
     download_file_with_limit,
     DownloadTooLargeError,
+    normalize_qzone_share_url,
 )
 
 if TYPE_CHECKING:
@@ -390,6 +391,7 @@ class QQMsgProcessor:
                     jumpUrl = meta_miniapp.get(
                         "jumpUrl", meta_miniapp.get("legacyUrl", "")
                     )
+                    jumpUrl = normalize_qzone_share_url(jumpUrl)
                     urls = [preview, jumpUrl] if preview else [jumpUrl]
                     urls = [url for url in urls if url]  # Remove empty URLs
                     efb_msg.text = "【{tag}】\n\n{title}\n\n{urls}".format(
@@ -401,6 +403,7 @@ class QQMsgProcessor:
                     # QQ空间相册分享
                     preview = meta_miniapp.get("preview", "")
                     jumpUrl = meta_miniapp.get("jumpUrl", "")
+                    jumpUrl = normalize_qzone_share_url(jumpUrl)
                     urls = [preview, jumpUrl] if preview else [jumpUrl]
                     urls = [url for url in urls if url]  # Remove empty URLs
                     efb_msg.text = "【{tag}】\n\n{title}\n\n{urls}".format(
