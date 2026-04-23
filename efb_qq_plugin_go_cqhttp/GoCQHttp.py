@@ -1445,6 +1445,17 @@ class GoCQHttp(BaseClient):
         else:
             self.logger.warning("Failed to update friend list")
 
+    @staticmethod
+    def _is_truncated_name_change(old_name: str, new_name: str) -> bool:
+        """Return True when one name is a leading-substring of the other.
+
+        go-cqhttp occasionally delivers a truncated group name during a
+        rename event (e.g. the full new name arrives a moment later in a
+        second event).  If either name starts-with the other we treat the
+        change as a delivery artifact and suppress the notification.
+        """
+        return old_name.startswith(new_name) or new_name.startswith(old_name)
+
     async def _check_group_name_update(self, group_id: int, chat: GroupChat):
         """Rate-limited check for group name changes via no_cache API call.
 
@@ -1468,7 +1479,12 @@ class GoCQHttp(BaseClient):
             self.group_dict[group_id] = fresh_info
             if new_name:
                 chat.name = new_name
-            if old_name and new_name and old_name != new_name:
+            if (
+                old_name
+                and new_name
+                and old_name != new_name
+                and not self._is_truncated_name_change(old_name, new_name)
+            ):
                 self.logger.info(
                     "Group %s name changed: '%s' -> '%s'",
                     group_id,
@@ -1519,9 +1535,19 @@ class GoCQHttp(BaseClient):
                 for group in self.group_list:
                     gid = group["group_id"]
                     old = old_group_dict.get(gid)
-                    if old and old.get("group_name") != group.get("group_name"):
-                        old_name = old.get("group_name", str(gid))
-                        new_name = group.get("group_name", str(gid))
+                    old_name = old.get("group_name") if old else None
+                    new_name = group.get("group_name")
+                    if (
+                        old
+                        and old_name != new_name
+                        and not (
+                            old_name
+                            and new_name
+                            and self._is_truncated_name_change(old_name, new_name)
+                        )
+                    ):
+                        old_name = old_name or str(gid)
+                        new_name = new_name or str(gid)
                         self.logger.info(
                             "Group %s name changed: '%s' -> '%s'",
                             gid,
