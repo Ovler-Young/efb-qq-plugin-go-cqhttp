@@ -658,7 +658,7 @@ def normalize_qq_download_url(url: str) -> str:
     - https://c2cpicdw.qpic.cn/download?... -> https://multimedia.nt.qq.com.cn/download?...
     """
     # Replace IP addresses (with or without port) with NTQQ domain
-    url = re.sub(r'https?://\d+\.\d+\.\d+\.\d+(:\d+)?/', 'https://multimedia.nt.qq.com.cn/', url)
+    url = re.sub(r"https?://\d+\.\d+\.\d+\.\d+(:\d+)?/", "https://multimedia.nt.qq.com.cn/", url)
 
     # Also replace problematic qpic.cn domains with better NTQQ domain
     url = url.replace("c2cpicdw.qpic.cn", "multimedia.nt.qq.com.cn")
@@ -752,7 +752,9 @@ async def async_get_file_with_limit(url: str, max_bytes: Optional[int] = None, e
                 new_image_link = parsed_url._replace(query=new_query_string).geturl()
 
                 try:
-                    temp_file = await async_get_file_with_limit(new_image_link, max_bytes=max_bytes, errcount=errcount + 1)
+                    temp_file = await async_get_file_with_limit(
+                        new_image_link, max_bytes=max_bytes, errcount=errcount + 1
+                    )
                     return temp_file
                 except Exception as e:
                     logger.error(f"Failed to download image with alternative appid: {e}")
