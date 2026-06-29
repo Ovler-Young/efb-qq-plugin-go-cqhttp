@@ -1,10 +1,11 @@
+import asyncio
 import logging
-import tempfile
-from typing import IO, Optional, Union
 import re
+import tempfile
+import urllib.parse
+from typing import IO, Optional, Union
 
 import httpx
-import urllib.parse
 import pilk
 import pydub
 from ehforwarderbot import Message, coordinator
@@ -657,7 +658,7 @@ def normalize_qq_download_url(url: str) -> str:
     - https://c2cpicdw.qpic.cn/download?... -> https://multimedia.nt.qq.com.cn/download?...
     """
     # Replace IP addresses (with or without port) with NTQQ domain
-    url = re.sub(r'https?://\d+\.\d+\.\d+\.\d+(:\d+)?/', 'https://multimedia.nt.qq.com.cn/', url)
+    url = re.sub(r"https?://\d+\.\d+\.\d+\.\d+(:\d+)?/", "https://multimedia.nt.qq.com.cn/", url)
 
     # Also replace problematic qpic.cn domains with better NTQQ domain
     url = url.replace("c2cpicdw.qpic.cn", "multimedia.nt.qq.com.cn")
@@ -751,7 +752,9 @@ async def async_get_file_with_limit(url: str, max_bytes: Optional[int] = None, e
                 new_image_link = parsed_url._replace(query=new_query_string).geturl()
 
                 try:
-                    temp_file = await async_get_file_with_limit(new_image_link, max_bytes=max_bytes, errcount=errcount + 1)
+                    temp_file = await async_get_file_with_limit(
+                        new_image_link, max_bytes=max_bytes, errcount=errcount + 1
+                    )
                     return temp_file
                 except Exception as e:
                     logger.error(f"Failed to download image with alternative appid: {e}")
@@ -801,14 +804,14 @@ async def cq_get_image(image_link: str, max_bytes: Optional[int] = None) -> Opti
         return None
 
 
-def async_send_messages_to_master(msg: Message):
+async def async_send_messages_to_master(msg: Message):
     """
     Send message to master, if the message contains a file, the file will
     be closed after sending NO MATTER WHAT.
     """
 
     try:
-        coordinator.send_message(msg)
+        await asyncio.to_thread(coordinator.send_message, msg)
     finally:
         if msg.file:
             msg.file.close()
@@ -908,10 +911,21 @@ async def download_voice(voice_url: str):
         origin_file.seek(0)
         if b"#!SILK_V3" in silk_header:
             with tempfile.NamedTemporaryFile() as pcm_file:
-                pilk.decode(origin_file.name, pcm_file.name)
+                await asyncio.to_thread(pilk.decode, origin_file.name, pcm_file.name)
                 audio_file = tempfile.NamedTemporaryFile()
-                pydub.AudioSegment.from_raw(file=pcm_file, sample_width=2, frame_rate=24000, channels=1).export(
-                    audio_file, format="ogg", codec="libopus", parameters=["-vbr", "on"]
+                audio_segment = await asyncio.to_thread(
+                    pydub.AudioSegment.from_raw,
+                    file=pcm_file,
+                    sample_width=2,
+                    frame_rate=24000,
+                    channels=1,
+                )
+                await asyncio.to_thread(
+                    audio_segment.export,
+                    audio_file,
+                    format="ogg",
+                    codec="libopus",
+                    parameters=["-vbr", "on"],
                 )
         else:
             audio_file = origin_file

@@ -52,17 +52,21 @@ class QQMsgProcessor:
 
         if efb_file is None:
             efb_msg.type = MsgType.Text
-            url = data.get('url', '')
-            if 'gchatpic_new' in url:
+            url = data.get("url", "")
+            if "gchatpic_new" in url:
                 efb_msg.text = "[Image download failed]"
             else:
-                efb_msg.text = f"[Image download failed locally, but receiving platform may still be able to load it]\n{url}"
-            self.logger.warning("Image download failed. URL: %s, File: %s", data.get("url", "N/A"), data.get("file", "N/A"))
+                efb_msg.text = (
+                    f"[Image download failed locally, but receiving platform may still be able to load it]\n{url}"
+                )
+            self.logger.warning(
+                "Image download failed. URL: %s, File: %s", data.get("url", "N/A"), data.get("file", "N/A")
+            )
             return [efb_msg]
 
         efb_msg.type = MsgType.Image
         efb_msg.file = efb_file
-        mime = magic.from_file(efb_msg.file.name, mime=True)
+        mime = await asyncio.to_thread(magic.from_file, efb_msg.file.name, mime=True)
         if isinstance(mime, bytes):
             mime = mime.decode()
         efb_msg.filename = data["file"] if "file" in data else efb_msg.file.name
@@ -75,14 +79,14 @@ class QQMsgProcessor:
 
     async def qq_record_wrapper(self, data, _: Chat = None):  # Experimental!
         efb_msg = Message()
-        if not data["url"].startswith(("http://", "https://")) or  "." not in data["url"]:
+        if not data["url"].startswith(("http://", "https://")) or "." not in data["url"]:
             efb_msg.type = MsgType.Text
             efb_msg.text = "[Voice Message] Invalid URL"
             return [efb_msg]
         try:
             efb_msg.type = MsgType.Audio
             efb_msg.file = await download_voice(data["url"])
-            mime = magic.from_file(efb_msg.file.name, mime=True)
+            mime = await asyncio.to_thread(magic.from_file, efb_msg.file.name, mime=True)
             if isinstance(mime, bytes):
                 mime = mime.decode()
             efb_msg.path = efb_msg.file.name
@@ -202,11 +206,11 @@ class QQMsgProcessor:
         # there's no need to escape the special characters
         return "[CQ:record,file=base64://{}]".format(encoded_string.decode())
 
-    def qq_file_after_wrapper(self, data):
+    async def qq_file_after_wrapper(self, data):
         efb_msg = Message()
         efb_msg.file = data["file"]
         efb_msg.type = MsgType.File
-        mime = magic.from_file(efb_msg.file.name, mime=True)
+        mime = await asyncio.to_thread(magic.from_file, efb_msg.file.name, mime=True)
         if isinstance(mime, bytes):
             mime = mime.decode()
         efb_msg.path = efb_msg.file.name
@@ -240,7 +244,7 @@ class QQMsgProcessor:
             else:
                 return self.qq_text_simple_wrapper(text, at_list)
         except Exception:
-            return asyncio.run(self.qq_group_broadcast_alternative_wrapper(data, chat))
+            return await self.qq_group_broadcast_alternative_wrapper(data, chat)
 
     async def qq_group_broadcast_alternative_wrapper(self, data, chat: Chat):
         try:
@@ -331,8 +335,7 @@ class QQMsgProcessor:
                     urls = [preview, meta_miniapp.get("jumpUrl", "")] if preview else [meta_miniapp.get("jumpUrl", "")]
                     urls = [url for url in urls if url]  # Remove empty URLs
                     efb_msg.text = "【群相册】\n\n{title}\n\n{urls}".format(
-                        title=meta_miniapp["title"],
-                        urls="\n".join(urls)
+                        title=meta_miniapp["title"], urls="\n".join(urls)
                     )
                 elif bizsrc == "qzone.shuoshuosharepicture":
                     # QQ空间说说分享
@@ -341,9 +344,7 @@ class QQMsgProcessor:
                     urls = [preview, jumpUrl] if preview else [jumpUrl]
                     urls = [url for url in urls if url]  # Remove empty URLs
                     efb_msg.text = "【{tag}】\n\n{title}\n\n{urls}".format(
-                        tag=meta_miniapp.get("tag", "QQ空间"),
-                        title=meta_miniapp["title"],
-                        urls="\n".join(urls)
+                        tag=meta_miniapp.get("tag", "QQ空间"), title=meta_miniapp["title"], urls="\n".join(urls)
                     )
                 elif bizsrc == "qzone.albumshare":
                     # QQ空间相册分享
@@ -352,9 +353,7 @@ class QQMsgProcessor:
                     urls = [preview, jumpUrl] if preview else [jumpUrl]
                     urls = [url for url in urls if url]  # Remove empty URLs
                     efb_msg.text = "【{tag}】\n\n{title}\n\n{urls}".format(
-                        tag=meta_miniapp.get("tag", "QQ空间相册"),
-                        title=meta_miniapp["title"],
-                        urls="\n".join(urls)
+                        tag=meta_miniapp.get("tag", "QQ空间相册"), title=meta_miniapp["title"], urls="\n".join(urls)
                     )
                 elif bizsrc == "miniapp.nativeshare":
                     # 微信小程序
@@ -366,7 +365,7 @@ class QQMsgProcessor:
                         tag=meta_miniapp["tag"],
                         title=meta_miniapp["title"],
                         source=meta_miniapp["source"],
-                        urls="\n".join(urls)
+                        urls="\n".join(urls),
                     )
                 else:
                     # Generic mini app
@@ -375,16 +374,14 @@ class QQMsgProcessor:
                     urls = [preview, jumpUrl] if preview else [jumpUrl]
                     urls = [url for url in urls if url]  # Remove empty URLs
                     efb_msg.text = "【{tag}】\n\n{title}\n\n{urls}".format(
-                        tag=meta_miniapp.get("tag", "小程序"),
-                        title=meta_miniapp["title"],
-                        urls="\n".join(urls)
+                        tag=meta_miniapp.get("tag", "小程序"), title=meta_miniapp["title"], urls="\n".join(urls)
                     )
 
             # 图文
             elif dict_data["app"] == "com.tencent.tuwen.lua":
                 bizsrc = dict_data.get("bizsrc", "")
                 meta_news = dict_data["meta"]["news"]
-                
+
                 if bizsrc == "groupalbum.interact":
                     # 群相册交互
                     preview = meta_news.get("preview", "")
@@ -392,9 +389,7 @@ class QQMsgProcessor:
                     urls = [preview, jumpUrl] if preview else [jumpUrl]
                     urls = [url for url in urls if url]  # Remove empty URLs
                     efb_msg.text = "【群相册】\n\n{title}\n{desc}\n\n{urls}".format(
-                        title=meta_news["title"],
-                        desc=meta_news["desc"],
-                        urls="\n".join(urls)
+                        title=meta_news["title"], desc=meta_news["desc"], urls="\n".join(urls)
                     )
                 else:
                     # 其他
@@ -402,7 +397,7 @@ class QQMsgProcessor:
                     title = meta_news["title"]
                     desc = meta_news.get("desc", "")
                     jumpUrl = meta_news["jumpUrl"]
-                    
+
                     urls = [jumpUrl]
                     urls = [url for url in urls if url]  # Remove empty URLs
 
@@ -426,26 +421,28 @@ class QQMsgProcessor:
                 meta_detail = dict_data["meta"]["detail"]
                 channel_info = meta_detail.get("channel_info", {})
                 feed = meta_detail.get("feed", {})
-                
+
                 feed_text = ""
                 if "contents" in feed and "contents" in feed["contents"]:
                     for content in feed["contents"]["contents"]:
                         if content["type"] == 1 and "text_content" in content:
                             feed_text += content["text_content"]["text"]
-                
-                efb_msg.text = "【频道帖子】\n\n频道：{channel_name}\n群组：{guild_name}\n\n{text}\n\n{jump_url}".format(
-                    channel_name=channel_info.get("channel_name", ""),
-                    guild_name=channel_info.get("guild_name", ""),
-                    text=feed_text,
-                    jump_url=meta_detail.get("jump_url", "")
+
+                efb_msg.text = (
+                    "【频道帖子】\n\n频道：{channel_name}\n群组：{guild_name}\n\n{text}\n\n{jump_url}".format(
+                        channel_name=channel_info.get("channel_name", ""),
+                        guild_name=channel_info.get("guild_name", ""),
+                        text=feed_text,
+                        jump_url=meta_detail.get("jump_url", ""),
+                    )
                 )
-            
+
             elif dict_data["app"] == "com.tencent.eventshare.lua":
                 meta_eventshare = dict_data["meta"]["eventshare"]
                 efb_msg.text = "【{tag}】\n\n{title}\n\n{jumpURL}".format(
                     tag=meta_eventshare.get("tag", "活动"),
                     title=meta_eventshare["title"],
-                    jumpURL=meta_eventshare["jumpURL"]
+                    jumpURL=meta_eventshare["jumpURL"],
                 )
 
             elif dict_data["app"] == "com.tencent.contact.lua":
@@ -454,16 +451,13 @@ class QQMsgProcessor:
                     tag=meta_contact.get("tag", "联系人"),
                     nickname=meta_contact["nickname"],
                     contact=meta_contact.get("contact", ""),
-                    jumpUrl=meta_contact["jumpUrl"]
+                    jumpUrl=meta_contact["jumpUrl"],
                 )
-            
+
             elif dict_data["app"] == "com.tencent.autoreply":
                 meta_metadata = dict_data["meta"]["metadata"]
                 buttons = "\n".join([button["name"] for button in meta_metadata["buttons"]])
-                efb_msg.text = "【{title}】\n\n{buttons}".format(
-                    title=meta_metadata["title"],
-                    buttons=buttons
-                )
+                efb_msg.text = "【{title}】\n\n{buttons}".format(title=meta_metadata["title"], buttons=buttons)
 
             elif dict_data["app"] == "com.tencent.qun.pro":
                 meta_contact = dict_data["meta"]["contact"]
@@ -471,14 +465,13 @@ class QQMsgProcessor:
                     tag=meta_contact.get("tag", "频道"),
                     title=meta_contact["title"],
                     desc=meta_contact.get("desc", ""),
-                    jumpUrl=meta_contact["jumpUrl"]
+                    jumpUrl=meta_contact["jumpUrl"],
                 )
 
             elif dict_data["app"] == "com.tencent.postguidance":
                 meta_invite = dict_data["meta"]["invite"]
                 efb_msg.text = "【{tag}】\n\n{title}".format(
-                    tag=meta_invite.get("tag", "群帖子"),
-                    title=meta_invite["title"]
+                    tag=meta_invite.get("tag", "群帖子"), title=meta_invite["title"]
                 )
 
             # Tencent group photo upload
@@ -540,7 +533,7 @@ class QQMsgProcessor:
 
             efb_msg.type = MsgType.Video
             efb_msg.file = efb_file
-            mime = magic.from_file(efb_msg.file.name, mime=True)
+            mime = await asyncio.to_thread(magic.from_file, efb_msg.file.name, mime=True)
             if isinstance(mime, bytes):
                 mime = mime.decode()
             efb_msg.filename = data["file"] if "file" in data else efb_msg.file.name
