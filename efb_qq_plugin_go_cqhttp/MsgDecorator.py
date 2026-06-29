@@ -62,7 +62,7 @@ class QQMsgProcessor:
 
         efb_msg.type = MsgType.Image
         efb_msg.file = efb_file
-        mime = magic.from_file(efb_msg.file.name, mime=True)
+        mime = await asyncio.to_thread(magic.from_file, efb_msg.file.name, mime=True)
         if isinstance(mime, bytes):
             mime = mime.decode()
         efb_msg.filename = data["file"] if "file" in data else efb_msg.file.name
@@ -82,7 +82,7 @@ class QQMsgProcessor:
         try:
             efb_msg.type = MsgType.Audio
             efb_msg.file = await download_voice(data["url"])
-            mime = magic.from_file(efb_msg.file.name, mime=True)
+            mime = await asyncio.to_thread(magic.from_file, efb_msg.file.name, mime=True)
             if isinstance(mime, bytes):
                 mime = mime.decode()
             efb_msg.path = efb_msg.file.name
@@ -202,11 +202,11 @@ class QQMsgProcessor:
         # there's no need to escape the special characters
         return "[CQ:record,file=base64://{}]".format(encoded_string.decode())
 
-    def qq_file_after_wrapper(self, data):
+    async def qq_file_after_wrapper(self, data):
         efb_msg = Message()
         efb_msg.file = data["file"]
         efb_msg.type = MsgType.File
-        mime = magic.from_file(efb_msg.file.name, mime=True)
+        mime = await asyncio.to_thread(magic.from_file, efb_msg.file.name, mime=True)
         if isinstance(mime, bytes):
             mime = mime.decode()
         efb_msg.path = efb_msg.file.name
@@ -240,7 +240,7 @@ class QQMsgProcessor:
             else:
                 return self.qq_text_simple_wrapper(text, at_list)
         except Exception:
-            return asyncio.run(self.qq_group_broadcast_alternative_wrapper(data, chat))
+            return await self.qq_group_broadcast_alternative_wrapper(data, chat)
 
     async def qq_group_broadcast_alternative_wrapper(self, data, chat: Chat):
         try:
@@ -540,7 +540,7 @@ class QQMsgProcessor:
 
             efb_msg.type = MsgType.Video
             efb_msg.file = efb_file
-            mime = magic.from_file(efb_msg.file.name, mime=True)
+            mime = await asyncio.to_thread(magic.from_file, efb_msg.file.name, mime=True)
             if isinstance(mime, bytes):
                 mime = mime.decode()
             efb_msg.filename = data["file"] if "file" in data else efb_msg.file.name
