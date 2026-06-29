@@ -361,6 +361,10 @@ class GoCQHttp(BaseClient):
                 if context["message_type"] == "guild":
                     return
 
+                coolq_msg_id = context["message_id"]
+                if self.auto_mark_as_read:
+                    asyncio.create_task(self._mark_msg_as_read(coolq_msg_id))
+
                 # Check if this is a self-sent message
                 is_self_sent = getattr(context, "_is_self_sent", False)
                 if is_self_sent and context["message_type"] == "private":
@@ -406,7 +410,6 @@ class GoCQHttp(BaseClient):
 
                 if main_text != "":
                     messages.append(self.msg_decorator.qq_text_simple_wrapper(main_text, at_dict))
-                coolq_msg_id = context["message_id"]
                 for i in range(len(messages)):
                     if not isinstance(messages[i], Message):
                         continue
@@ -426,13 +429,6 @@ class GoCQHttp(BaseClient):
 
                     efb_msg.deliver_to = coordinator.master
                     await async_send_messages_to_master(efb_msg)
-
-                if self.auto_mark_as_read:
-                    try:
-                        await self.coolq_api_query("mark_msg_as_read", message_id=coolq_msg_id)
-                        self.logger.debug(f"Marked message {coolq_msg_id} as read")
-                    except Exception as e:
-                        self.logger.warning(f"Failed to mark message {coolq_msg_id} as read: {e}")
 
             asyncio.create_task(_handle_msg())
 
@@ -1215,6 +1211,13 @@ class GoCQHttp(BaseClient):
         elif self.repeat_counter < 3:
             self.deliver_alert_to_master(("Your status is offline.\n" "You may try login with /0_login"))
             self.repeat_counter += 1
+
+    async def _mark_msg_as_read(self, message_id):
+        try:
+            await self.coolq_api_query("mark_msg_as_read", message_id=message_id)
+            self.logger.debug(f"Marked message {message_id} as read")
+        except Exception as e:
+            self.logger.warning(f"Failed to mark message {message_id} as read: {e}")
 
     async def check_status_periodically(self, run_once: bool = False):
         interval = 300
