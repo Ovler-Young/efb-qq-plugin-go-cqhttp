@@ -657,6 +657,10 @@ def normalize_qq_download_url(url: str) -> str:
     - https://43.128.17.103/download?... -> https://multimedia.nt.qq.com.cn/download?...
     - https://c2cpicdw.qpic.cn/download?... -> https://multimedia.nt.qq.com.cn/download?...
     """
+    # Group-file URLs use a signed ftn_handler endpoint whose host must remain intact.
+    if "/ftn_handler/" in url:
+        return url
+
     # Replace IP addresses (with or without port) with NTQQ domain
     url = re.sub(r"https?://\d+\.\d+\.\d+\.\d+(:\d+)?/", "https://multimedia.nt.qq.com.cn/", url)
 
