@@ -689,17 +689,25 @@ async def async_get_file(url: str) -> IO:
     return temp_file
 
 
-async def async_get_file_with_limit(url: str, max_bytes: Optional[int] = None, errcount: int = 0) -> IO:
+async def async_get_file_with_limit(
+    url: str,
+    max_bytes: Optional[int] = None,
+    errcount: int = 0,
+    *,
+    _normalize: bool = True,
+) -> IO:
     """
     Stream download a file with an optional byte ceiling.
     Raises DownloadTooLargeError if Content-Length > max_bytes or streamed bytes exceed max_bytes.
 
     Retry strategy:
-    1. Normalize URL (replace IPs and poor domains with multimedia.nt.qq.com.cn)
-    2. Try normalized URL (up to 2 retries)
-    3. If 400 error, try alternative appid (1406 <-> 1407)
+    1. Try the normalized URL (replace IPs and poor domains with multimedia.nt.qq.com.cn).
+    2. If normalization changed the URL and the request fails, retry the original URL.
+    3. If a request returns 400, try the alternative appid (1406 <-> 1407).
     """
-    url = normalize_qq_download_url(url)
+    original_url = url
+    if _normalize:
+        url = normalize_qq_download_url(url)
 
     temp_file = tempfile.NamedTemporaryFile()
     if errcount > 2:
@@ -757,19 +765,34 @@ async def async_get_file_with_limit(url: str, max_bytes: Optional[int] = None, e
 
                 try:
                     temp_file = await async_get_file_with_limit(
-                        new_image_link, max_bytes=max_bytes, errcount=errcount + 1
+                        new_image_link,
+                        max_bytes=max_bytes,
+                        errcount=errcount + 1,
+                        _normalize=False,
                     )
                     return temp_file
                 except Exception as e:
                     logger.error(f"Failed to download image with alternative appid: {e}")
         # For other HTTP errors, fall through to retry logic below
         temp_file.close()
-        temp_file = await async_get_file_with_limit(url, max_bytes=max_bytes, errcount=errcount + 1)
+        retry_url = original_url if original_url != url else url
+        temp_file = await async_get_file_with_limit(
+            retry_url,
+            max_bytes=max_bytes,
+            errcount=errcount + 1,
+            _normalize=False if original_url != url else _normalize,
+        )
     except Exception as e:
         logger.error(f"Unexpected error for {url}: {e}")
         temp_file.close()
         # Retry with incremented error count
-        temp_file = await async_get_file_with_limit(url, max_bytes=max_bytes, errcount=errcount + 1)
+        retry_url = original_url if original_url != url else url
+        temp_file = await async_get_file_with_limit(
+            retry_url,
+            max_bytes=max_bytes,
+            errcount=errcount + 1,
+            _normalize=False if original_url != url else _normalize,
+        )
     return temp_file
 
 
