@@ -231,7 +231,10 @@ class GoCQHttp(BaseClient):
                 substitution_begin = len(main_text)
                 substitution_end = len(main_text) + len(group_card) + 1
                 main_text = "@{} ".format(group_card)
-                if str(my_uid) == str(msg_data["qq"]) or str(msg_data["qq"]) == "all":
+                # QQ may encode the author of a replied-to message as @all. Do not
+                # turn that synthetic segment into a mention of the bot.
+                is_reply_at_all = context.get("contains_reply", False) and str(msg_data["qq"]) == "all"
+                if (str(my_uid) == str(msg_data["qq"]) or str(msg_data["qq"]) == "all") and not is_reply_at_all:
                     at_dict = ((substitution_begin, substitution_end), chat.self)
                     at_list.append(at_dict)
             elif msg_type == "reply":
@@ -299,6 +302,7 @@ class GoCQHttp(BaseClient):
             messages: List[Message] = []
             main_text: str = ""
             at_dict: Dict[Tuple[int, int], Union[Chat, ChatMember]] = {}
+            context["contains_reply"] = any(element.get("type") == "reply" for element in msg_elements)
             for msg_element in msg_elements:
                 sub_main_text, sub_messages, sub_at_list = await message_element_wrapper(context, msg_element, chat)
                 main_text_len = len(main_text)
