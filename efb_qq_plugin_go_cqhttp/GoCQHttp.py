@@ -233,7 +233,12 @@ class GoCQHttp(BaseClient):
                 main_text = "@{} ".format(group_card)
                 # QQ may encode the author of a replied-to message as @all. Do not
                 # turn that synthetic segment into a mention of the bot.
-                is_reply_at_all = context.get("contains_reply", False) and str(msg_data["qq"]) == "all"
+                reply_is_from_sender = str(context.get("reply_sender_id")) == str(context.get("user_id"))
+                is_reply_at_all = (
+                    context.get("contains_reply", False)
+                    and str(msg_data["qq"]) == "all"
+                    and not reply_is_from_sender
+                )
                 if (str(my_uid) == str(msg_data["qq"]) or str(msg_data["qq"]) == "all") and not is_reply_at_all:
                     at_dict = ((substitution_begin, substitution_end), chat.self)
                     at_list.append(at_dict)
@@ -242,6 +247,7 @@ class GoCQHttp(BaseClient):
                 try:
                     if "qq" in msg_data:
                         # 如果 msg_data 中有 'qq' 字段，直接使用
+                        context["reply_sender_id"] = msg_data["qq"]
                         ref_user = await self.get_user_info(msg_data["qq"])
                         main_text = (
                             f'「{ref_user["remark"]}（{ref_user["nickname"]}）：{msg_data.get("text", msg_data)}」\n'
@@ -250,6 +256,7 @@ class GoCQHttp(BaseClient):
                     else:
                         # 如果没有 'qq'，通过 'id' 调用 get_msg 获取完整消息
                         original_msg = await self.coolq_api_query("get_msg", message_id=msg_data["id"])
+                        context["reply_sender_id"] = original_msg["sender"]["user_id"]
                         ref_user = await self.get_user_info(original_msg["sender"]["user_id"])
                         original_text = original_msg.get("raw_message")
                         if (
@@ -303,6 +310,7 @@ class GoCQHttp(BaseClient):
             main_text: str = ""
             at_dict: Dict[Tuple[int, int], Union[Chat, ChatMember]] = {}
             context["contains_reply"] = any(element.get("type") == "reply" for element in msg_elements)
+            context.pop("reply_sender_id", None)
             for msg_element in msg_elements:
                 sub_main_text, sub_messages, sub_at_list = await message_element_wrapper(context, msg_element, chat)
                 main_text_len = len(main_text)
