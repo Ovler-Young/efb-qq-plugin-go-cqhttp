@@ -680,10 +680,26 @@ class GoCQHttp(BaseClient):
             chat = GroupChat(channel=self.channel, uid=f"group_{context['group_id']}")
 
             efb_msg = Message(chat=chat, uid=MessageID(f"{chat.uid.split('_')[-1]}_{coolq_msg_id}"))
-            await asyncio.to_thread(
-                coordinator.send_status,
-                MessageRemoval(source_channel=self.channel, destination_channel=coordinator.master, message=efb_msg),
+            status = MessageRemoval(
+                source_channel=self.channel,
+                destination_channel=coordinator.master,
+                message=efb_msg,
             )
+            try:
+                await asyncio.to_thread(coordinator.send_status, status)
+            except Exception as exc:
+                if "Message to be replied not found" not in str(exc):
+                    raise
+                self.logger.warning("Recall status reply target is unavailable; sending a standalone notice")
+                fallback = Message(
+                    chat=chat,
+                    author=chat.self,
+                    deliver_to=coordinator.master,
+                    uid=efb_msg.uid,
+                    type=MsgType.Text,
+                    text="Message recalled",
+                )
+                await async_send_messages_to_master(fallback)
 
         @self.coolq_bot.on_notice("friend_recall")
         async def handle_friend_recall_msg(context: Event):
