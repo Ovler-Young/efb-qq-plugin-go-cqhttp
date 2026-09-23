@@ -4,6 +4,7 @@ import html
 import json
 import logging
 import sys
+from urllib.parse import parse_qs, urlparse
 from typing import TYPE_CHECKING
 
 import magic
@@ -341,6 +342,23 @@ class QQMsgProcessor:
                     # QQ空间说说分享
                     preview = meta_miniapp.get("preview", "")
                     jumpUrl = meta_miniapp.get("jumpUrl", meta_miniapp.get("legacyUrl", ""))
+                    if jumpUrl.startswith("mqqapi://qzoneschema/"):
+                        try:
+                            schema = parse_qs(urlparse(jumpUrl).query).get("schema", [""])[0]
+                            schema_url = base64.b64decode(schema, validate=True).decode("utf-8")
+                            schema_params = parse_qs(urlparse(schema_url).query)
+                            oldlink = schema_params.get("oldlink", [""])[0]
+                            if oldlink:
+                                link_parts = urlparse(oldlink)
+                                link_params = parse_qs(link_parts.query)
+                                for key in ("subid", "uin"):
+                                    if key in schema_params and key not in link_params:
+                                        link_params[key] = schema_params[key]
+                                from urllib.parse import urlencode, urlunparse
+
+                                jumpUrl = urlunparse(link_parts._replace(query=urlencode(link_params, doseq=True)))
+                        except (ValueError, UnicodeDecodeError):
+                            pass
                     urls = [preview, jumpUrl] if preview else [jumpUrl]
                     urls = [url for url in urls if url]  # Remove empty URLs
                     efb_msg.text = "【{tag}】\n\n{title}\n\n{urls}".format(
