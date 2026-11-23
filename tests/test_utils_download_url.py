@@ -20,6 +20,23 @@ class NormalizeQQDownloadURLTest(unittest.TestCase):
             "https://multimedia.nt.qq.com.cn/download?appid=1407",
         )
 
+    def test_downloads_from_supplied_https_node_using_qq_hostname(self):
+        url = "https://192.0.2.1:443/download?appid=1415&rkey=example"
+        client_class = httpx.AsyncClient
+
+        def serve_media(request):
+            self.assertEqual(request.url, httpx.URL(url))
+            self.assertEqual(request.headers["Host"], "multimedia.nt.qq.com.cn")
+            self.assertEqual(request.extensions["sni_hostname"], "multimedia.nt.qq.com.cn")
+            return httpx.Response(200, content=b"file")
+
+        def client(**kwargs):
+            return client_class(transport=httpx.MockTransport(serve_media), **kwargs)
+
+        with patch.object(Utils.httpx, "AsyncClient", client):
+            with self.run_async(Utils.async_get_file_with_limit(url, max_bytes=10)) as result:
+                self.assertEqual(result.read(), b"file")
+
     def test_retries_original_url_after_normalized_request_fails(self):
         original_url = "http://43.128.17.103/download?appid=1407"
         normalized_url = "https://multimedia.nt.qq.com.cn/download?appid=1407"
@@ -59,7 +76,7 @@ class NormalizeQQDownloadURLTest(unittest.TestCase):
             async def __aexit__(self, *args):
                 return None
 
-            def stream(self, method, url):
+            def stream(self, method, url, **kwargs):
                 return Stream(url)
 
         with patch.object(Utils.httpx, "AsyncClient", Client):

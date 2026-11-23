@@ -11,6 +11,7 @@ import pydub
 from ehforwarderbot import Message, coordinator
 
 logger = logging.getLogger(__name__)
+_QQ_MEDIA_HOST = "multimedia.nt.qq.com.cn"
 
 # created by JogleLew and jqqqqqqqqqq, optimized based on Tim's emoji support, updated by xzsk2 to mobileqq v8.8.11
 qq_emoji_list = {
@@ -662,11 +663,11 @@ def normalize_qq_download_url(url: str) -> str:
         return url
 
     # Replace IP addresses (with or without port) with NTQQ domain
-    url = re.sub(r"https?://\d+\.\d+\.\d+\.\d+(:\d+)?/", "https://multimedia.nt.qq.com.cn/", url)
+    url = re.sub(r"https?://\d+\.\d+\.\d+\.\d+(:\d+)?/", f"https://{_QQ_MEDIA_HOST}/", url)
 
     # Also replace problematic qpic.cn domains with better NTQQ domain
-    url = url.replace("c2cpicdw.qpic.cn", "multimedia.nt.qq.com.cn")
-    url = url.replace("gchat.qpic.cn", "multimedia.nt.qq.com.cn")
+    url = url.replace("c2cpicdw.qpic.cn", _QQ_MEDIA_HOST)
+    url = url.replace("gchat.qpic.cn", _QQ_MEDIA_HOST)
 
     return url
 
@@ -701,13 +702,18 @@ async def async_get_file_with_limit(
     Raises DownloadTooLargeError if Content-Length > max_bytes or streamed bytes exceed max_bytes.
 
     Retry strategy:
-    1. Try the normalized URL (replace IPs and poor domains with multimedia.nt.qq.com.cn).
-    2. If normalization changed the URL and the request fails, retry the original URL.
-    3. If a request returns 400, try the alternative appid (1406 <-> 1407).
+    HTTPS /download links with a supplied IP try that CDN node first, then the hostname.
+    Other links try the normalized URL first, then the original. A 400 can trigger an
+    alternative appid attempt (1406 <-> 1407).
     """
-    original_url = url
+    use_cdn_ip = bool(re.match(r"https://(?:\d+\.){3}\d+(?::\d+)?/download(?:\?|$)", url))
+    retry_url = url
     if _normalize:
-        url = normalize_qq_download_url(url)
+        normalized_url = normalize_qq_download_url(url)
+        if use_cdn_ip:
+            retry_url = normalized_url
+        else:
+            url = normalized_url
 
     temp_file = tempfile.NamedTemporaryFile()
     if errcount > 2:
@@ -716,8 +722,10 @@ async def async_get_file_with_limit(
         raise httpx.HTTPError("Max retries exceeded")
     try:
         timeout = httpx.Timeout(30.0, connect=10.0)
+        headers = {"Host": _QQ_MEDIA_HOST} if use_cdn_ip else None
+        extensions = {"sni_hostname": _QQ_MEDIA_HOST} if use_cdn_ip else None
         async with httpx.AsyncClient(timeout=timeout) as client:
-            async with client.stream("GET", url) as resp:
+            async with client.stream("GET", url, headers=headers, extensions=extensions) as resp:
                 resp.raise_for_status()
                 cl = resp.headers.get("Content-Length")
                 if max_bytes is not None and cl is not None:
@@ -775,23 +783,21 @@ async def async_get_file_with_limit(
                     logger.error(f"Failed to download image with alternative appid: {e}")
         # For other HTTP errors, fall through to retry logic below
         temp_file.close()
-        retry_url = original_url if original_url != url else url
         temp_file = await async_get_file_with_limit(
             retry_url,
             max_bytes=max_bytes,
             errcount=errcount + 1,
-            _normalize=False if original_url != url else _normalize,
+            _normalize=_normalize and retry_url == url,
         )
     except Exception as e:
         logger.error(f"Unexpected error for {url}: {e}")
         temp_file.close()
         # Retry with incremented error count
-        retry_url = original_url if original_url != url else url
         temp_file = await async_get_file_with_limit(
             retry_url,
             max_bytes=max_bytes,
             errcount=errcount + 1,
-            _normalize=False if original_url != url else _normalize,
+            _normalize=_normalize and retry_url == url,
         )
     return temp_file
 

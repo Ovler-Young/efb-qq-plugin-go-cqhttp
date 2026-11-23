@@ -13,7 +13,7 @@ dependencies = [
     "hypercorn~=0.13.2",
     "pilk~=0.0.2",
     "pydub~=0.25.1",
-    "httpx>=0.23.3",
+    "httpx>=0.26.0",
 ]
 requires-python = ">=3.9"
 license = { text = "AGPL-3.0-only" }
