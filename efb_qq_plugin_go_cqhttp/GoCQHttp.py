@@ -581,7 +581,16 @@ class GoCQHttp(BaseClient):
                 text = "{remark}({nickname}) uploaded a file to you\n"
                 text = text.format(remark=user["remark"], nickname=user["nickname"]) + file_info_msg
                 context["message"] = text
-                await self.async_send_msg_to_master(context)
+                chat = await self.chat_manager.build_efb_chat_as_private(context)
+                msg = Message(
+                    uid="__offline_file__.%s" % int(time.time()),
+                    type=MsgType.Text,
+                    chat=chat,
+                    author=await self.chat_manager.build_or_get_efb_member(chat, context),
+                    text=context["event_description"] + "\n\n" + text,
+                    deliver_to=coordinator.master,
+                )
+                await async_send_messages_to_master(msg)
 
                 # Size check gate
                 size = context.get("file", {}).get("size")
